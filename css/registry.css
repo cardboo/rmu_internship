@@ -1,0 +1,219 @@
+/* ============================================================
+   Student Registry page styles  (admin_registry.php)
+   Part of v2 — keeps page-specific CSS out of the PHP files.
+   ============================================================ */
+
+:root {
+    --reg-primary:  #0D8ABC;
+    --reg-success:  #16a34a;
+    --reg-warning:  #d97706;
+    --reg-danger:   #dc2626;
+    --reg-muted:    #64748b;
+    --reg-border:   #e2e8f0;
+    --reg-bg-soft:  #f8fafc;
+}
+
+/* ---------- Banners ---------- */
+.banner {
+    padding: 14px 18px;
+    border-radius: 10px;
+    margin-bottom: 20px;
+    font-weight: 500;
+    border: 1px solid transparent;
+}
+.banner-success { background: #dcfce7; color: #166534; border-color: #bbf7d0; }
+.banner-error   { background: #fee2e2; color: #991b1b; border-color: #fecaca; }
+.banner-warning { background: #fef3c7; color: #92400e; border-color: #fde68a; }
+
+/* ---------- Per-row error list ---------- */
+.row-errors {
+    background: #fff7ed;
+    border: 1px solid #fed7aa;
+    border-radius: 10px;
+    padding: 12px 18px;
+    margin-bottom: 20px;
+    color: #7c2d12;
+}
+.row-errors summary { cursor: pointer; font-weight: 600; }
+.row-errors ul { margin: 10px 0 0 20px; line-height: 1.6; font-size: 0.9rem; }
+
+/* ---------- Tabs ---------- */
+.reg-tabs {
+    display: flex;
+    gap: 8px;
+    border-bottom: 2px solid var(--reg-border);
+    margin-bottom: 20px;
+}
+.tab-btn {
+    background: transparent;
+    border: none;
+    padding: 12px 20px;
+    cursor: pointer;
+    font-weight: 600;
+    color: var(--reg-muted);
+    font-size: 0.95rem;
+    border-bottom: 3px solid transparent;
+    transition: 0.2s;
+}
+.tab-btn:hover { color: var(--reg-primary); }
+.tab-btn.active {
+    color: var(--reg-primary);
+    border-bottom-color: var(--reg-primary);
+}
+.tab-panel { display: none; }
+.tab-panel.active { display: block; }
+
+/* ---------- Cards ---------- */
+.card {
+    background: white;
+    border-radius: 12px;
+    padding: 25px;
+    box-shadow: 0 2px 6px rgba(0,0,0,0.04);
+    border: 1px solid var(--reg-border);
+}
+.card h3 { margin-bottom: 8px; color: #1e293b; }
+.card .muted { color: var(--reg-muted); margin-bottom: 18px; font-size: 0.9rem; }
+
+/* ---------- File drop ---------- */
+.csv-form { display: flex; flex-direction: column; gap: 18px; }
+.file-drop {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    padding: 40px 20px;
+    border: 2px dashed var(--reg-primary);
+    border-radius: 10px;
+    background: var(--reg-bg-soft);
+    cursor: pointer;
+    transition: 0.2s;
+}
+.file-drop:hover { background: #eff6ff; }
+.file-drop i { font-size: 2.2rem; color: var(--reg-primary); }
+.file-drop span { color: var(--reg-muted); font-weight: 500; }
+.file-drop input[type=file] { display: none; }
+
+/* ---------- Buttons ---------- */
+.btn {
+    display: inline-flex;
+    align-items: center;
+    padding: 10px 18px;
+    border-radius: 8px;
+    border: none;
+    cursor: pointer;
+    font-weight: 600;
+    font-size: 0.9rem;
+    text-decoration: none;
+    transition: 0.2s;
+}
+.btn-primary { background: var(--reg-primary); color: white; }
+.btn-primary:hover { background: #0a6e96; }
+.btn-ghost   { background: #f1f5f9; color: #475569; border: 1px solid var(--reg-border); }
+.btn-ghost:hover { background: #e2e8f0; }
+
+.form-actions {
+    display: flex;
+    gap: 10px;
+    justify-content: flex-end;
+    flex-wrap: wrap;
+}
+
+/* ---------- Hint box ---------- */
+.hint-box {
+    background: var(--reg-bg-soft);
+    border-left: 3px solid var(--reg-primary);
+    padding: 14px 18px;
+    border-radius: 6px;
+    font-size: 0.88rem;
+    color: #334155;
+    line-height: 1.6;
+}
+.hint-box code {
+    background: white;
+    padding: 2px 6px;
+    border-radius: 4px;
+    font-size: 0.8rem;
+    color: #0f172a;
+    border: 1px solid var(--reg-border);
+}
+.hint-box ul { margin: 8px 0 0 20px; }
+
+/* ---------- Summary cards ---------- */
+.summary-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 15px;
+    margin-top: 20px;
+}
+.sum-card {
+    padding: 16px;
+    border-radius: 10px;
+    text-align: center;
+    border: 1px solid;
+}
+.sum-card h4 { font-size: 1.8rem; margin-bottom: 4px; }
+.sum-card p  { font-size: 0.85rem; color: var(--reg-muted); }
+.sum-ok   { background: #ecfdf5; border-color: #a7f3d0; color: #065f46; }
+.sum-skip { background: #fff7ed; border-color: #fed7aa; color: #7c2d12; }
+.sum-err  { background: #fef2f2; border-color: #fecaca; color: #991b1b; }
+
+/* ---------- Single-entry form ---------- */
+.single-form .grid-2 {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 18px;
+    margin-bottom: 20px;
+}
+.field { display: flex; flex-direction: column; gap: 6px; }
+.field label { font-weight: 600; font-size: 0.85rem; color: #334155; }
+.field input, .field select {
+    padding: 10px 12px;
+    border: 1px solid var(--reg-border);
+    border-radius: 8px;
+    font-size: 0.95rem;
+    outline: none;
+    transition: 0.15s;
+}
+.field input:focus, .field select:focus {
+    border-color: var(--reg-primary);
+    box-shadow: 0 0 0 3px rgba(13,138,188,0.12);
+}
+.field .req { color: var(--reg-danger); }
+
+/* ---------- List header / search ---------- */
+.list-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 10px;
+    margin-bottom: 18px;
+}
+.search-form {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+}
+.search-form input {
+    padding: 9px 12px;
+    border: 1px solid var(--reg-border);
+    border-radius: 8px;
+    min-width: 280px;
+    font-size: 0.9rem;
+}
+
+/* ---------- Empty state ---------- */
+.empty {
+    text-align: center;
+    padding: 40px;
+    color: #94a3b8;
+}
+.small { font-size: 0.8rem; margin-top: 10px; }
+
+/* ---------- Responsive ---------- */
+@media (max-width: 768px) {
+    .single-form .grid-2 { grid-template-columns: 1fr; }
+    .summary-grid { grid-template-columns: 1fr; }
+    .search-form input { min-width: 0; flex: 1; }
+}

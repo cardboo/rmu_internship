@@ -1,0 +1,18 @@
+# Uploaded user content (kept in production, not in git)
+uploads/*
+!uploads/.gitkeep
+
+# Local config overrides
+config.local.php
+.env
+.env.local
+
+# OS / editor cruft
+.DS_Store
+Thumbs.db
+*.swp
+.vscode/
+.idea/
+
+# Logs
+*.log

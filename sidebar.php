@@ -49,6 +49,9 @@ $user_image = !empty($profile_filename) ? "images/profiles/" . $profile_filename
             <a href="manage_users.php" class="<?php echo ($current_file == 'manage_users.php' || $current_file == 'edit_user.php') ? 'active' : ''; ?>">
                 <i class="fas fa-users"></i>&nbsp;&nbsp;Manage All Users
             </a>
+            <a href="admin_registry.php" class="<?php echo ($current_file == 'admin_registry.php') ? 'active' : ''; ?>">
+                <i class="fas fa-database"></i>&nbsp;&nbsp;Student Registry
+            </a>
             <a href="admin_bulk_upload.php" class="<?php echo ($current_file == 'admin_bulk_upload.php') ? 'active' : ''; ?>">
                 <i class="fas fa-upload"></i>&nbsp;&nbsp;Bulk Upload
             </a>

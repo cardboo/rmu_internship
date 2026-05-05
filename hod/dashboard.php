@@ -89,12 +89,96 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['update_id'])) {
     <link rel="stylesheet" href="<?php echo asset('css/style.css'); ?>">
     <link rel="stylesheet" href="<?php echo asset('css/layout.css'); ?>">
     <style>
-        .modal { display: none; position: fixed; z-index: 1000; left: 0; top: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); }
-        .modal-content { background: white; margin: 10% auto; padding: 25px; width: 450px; border-radius: 12px; box-shadow: 0 5px 15px rgba(0,0,0,0.3); }
-        .details-row { display: flex; justify-content: space-between; margin-bottom: 12px; border-bottom: 1px solid #f1f5f9; padding-bottom: 8px; }
-        .details-label { color: #64748b; font-size: 0.85rem; }
-        .details-value { font-weight: 600; color: #1e293b; }
-        
+        /* ----- Modal shell ----- */
+        .modal {
+            display: none;
+            position: fixed; inset: 0;
+            background: rgba(15, 23, 42, 0.6);
+            z-index: 1000;
+            align-items: flex-start;
+            justify-content: center;
+            padding: 5vh 16px;
+            overflow-y: auto;
+        }
+        .modal.open { display: flex; }
+        .modal-content {
+            background: white;
+            border-radius: 14px;
+            box-shadow: 0 25px 50px rgba(0,0,0,0.25);
+            width: 100%;
+            max-width: 540px;
+            overflow: hidden;
+            animation: modal-pop 0.18s ease-out;
+        }
+        @keyframes modal-pop {
+            from { opacity: 0; transform: translateY(-12px); }
+            to   { opacity: 1; transform: translateY(0); }
+        }
+        .modal-header {
+            display: flex; justify-content: space-between; align-items: center;
+            padding: 18px 22px;
+            background: linear-gradient(135deg, #0D8ABC 0%, #075f81 100%);
+            color: white;
+        }
+        .modal-header h3 { margin: 0; font-size: 1.05rem; }
+        .modal-close {
+            background: rgba(255,255,255,0.2);
+            border: none; color: white;
+            width: 30px; height: 30px;
+            border-radius: 50%;
+            font-size: 1rem; cursor: pointer;
+        }
+        .modal-close:hover { background: rgba(255,255,255,0.35); }
+        .modal-body { padding: 22px; }
+        .modal-footer {
+            padding: 14px 22px;
+            background: #f8fafc;
+            border-top: 1px solid #e2e8f0;
+            display: flex; justify-content: flex-end; gap: 8px;
+        }
+
+        /* ----- Modal content sections ----- */
+        .det-status-row {
+            display: flex; justify-content: space-between; align-items: center;
+            margin-bottom: 16px;
+        }
+        .det-status-row .student-name {
+            font-size: 1.1rem; font-weight: 700; color: #0f172a;
+        }
+        .det-status-row .student-meta {
+            font-size: 0.78rem; color: #64748b;
+        }
+        .det-section {
+            margin-bottom: 16px;
+            padding-bottom: 14px;
+            border-bottom: 1px solid #f1f5f9;
+        }
+        .det-section:last-child {
+            margin-bottom: 0; padding-bottom: 0; border-bottom: none;
+        }
+        .det-section h4 {
+            font-size: 0.7rem;
+            color: #94a3b8;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin: 0 0 8px;
+        }
+        .det-grid {
+            display: grid; grid-template-columns: 130px 1fr; gap: 6px 14px;
+            font-size: 0.9rem; color: #1e293b;
+        }
+        .det-grid .det-label { color: #64748b; }
+        .det-grid .det-value { font-weight: 600; }
+        .det-rejection {
+            background: #fef2f2;
+            border-left: 3px solid #ef4444;
+            color: #991b1b;
+            padding: 10px 14px;
+            border-radius: 6px;
+            font-size: 0.88rem;
+        }
+
+        /* ----- Existing dashboard chrome ----- */
         .notif-bell { position: relative; font-size: 1.4rem; color: #64748b; margin-right: 15px; cursor: pointer; }
         .notif-badge { background: #ef4444; color: white; padding: 2px 6px; border-radius: 50%; font-size: 0.7rem; position: absolute; top: -5px; right: -5px; border: 2px solid #f8fafc; }
         .sig-warning { background: #fef2f2; border: 1px solid #fecaca; color: #991b1b; padding: 15px; border-radius: 8px; margin-bottom: 20px; display: flex; align-items: center; gap: 10px; }
@@ -203,29 +287,118 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['update_id'])) {
 
     <div id="detailsModal" class="modal">
         <div class="modal-content">
-            <h3 style="margin-bottom: 20px; border-bottom: 2px solid #0D8ABC; padding-bottom: 10px;">Request Details</h3>
-            <div id="modalBody"></div>
-            <button onclick="closeModal()" class="btn-login" style="margin-top: 15px; background: #64748b; width: 100%;">Close</button>
+            <div class="modal-header">
+                <h3><i class="fas fa-file-signature"></i>&nbsp; Attachment Request Details</h3>
+                <button class="modal-close" onclick="closeModal()" aria-label="Close">&times;</button>
+            </div>
+            <div class="modal-body" id="modalBody"></div>
+            <div class="modal-footer">
+                <button class="btn-action" style="background:#e2e8f0; color:#475569;" onclick="closeModal()">Close</button>
+                <a id="modalDownload" href="#" target="_blank" class="btn-action" style="background:#0D8ABC; color:white; display:none;">
+                    <i class="fas fa-file-pdf"></i>&nbsp; Download Letter
+                </a>
+            </div>
         </div>
     </div>
 
     <script>
-    // 1. Show Student Details
+    const BASE_URL = <?php echo json_encode(BASE_URL); ?>;
+
+    function escapeHtml(s) {
+        if (s === null || s === undefined) return '—';
+        return String(s)
+            .replaceAll('&', '&amp;')
+            .replaceAll('<', '&lt;')
+            .replaceAll('>', '&gt;')
+            .replaceAll('"', '&quot;');
+    }
+    function fmtDate(s) {
+        if (!s) return '—';
+        const d = new Date(s);
+        return isNaN(d) ? s : d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
+    }
+    function statusBadge(status) {
+        const map = {
+            pending:  ['#fef3c7', '#92400e', 'Pending'],
+            approved: ['#dcfce7', '#166534', 'Approved'],
+            rejected: ['#fee2e2', '#991b1b', 'Rejected']
+        };
+        const [bg, fg, label] = map[status] || ['#e2e8f0', '#475569', status];
+        return `<span style="background:${bg};color:${fg};padding:4px 12px;border-radius:999px;font-size:0.75rem;font-weight:700;text-transform:uppercase;letter-spacing:0.4px;">${label}</span>`;
+    }
+
+    // 1. Show Student Details (richer modal)
     function viewDetails(data) {
         const body = document.getElementById('modalBody');
+        const dl   = document.getElementById('modalDownload');
+
+        const start = fmtDate(data.start_date);
+        const end   = fmtDate(data.end_date);
+
+        let weeks = '';
+        if (data.start_date && data.end_date) {
+            const ms = new Date(data.end_date) - new Date(data.start_date);
+            if (!isNaN(ms) && ms >= 0) weeks = Math.floor(ms / (1000*60*60*24*7)) + ' weeks';
+        }
+
+        const rejection = (data.status === 'rejected' && data.rejection_reason)
+            ? `<div class="det-section"><h4>Rejection Reason</h4>
+                 <div class="det-rejection">${escapeHtml(data.rejection_reason)}</div></div>`
+            : '';
+
         body.innerHTML = `
-            <div class="details-row"><span class="details-label">Student:</span> <span class="details-value">${data.full_name}</span></div>
-            <div class="details-row"><span class="details-label">Level / Program:</span> <span class="details-value">${data.level} - ${data.program}</span></div>
-            <div class="details-row"><span class="details-label">Company:</span> <span class="details-value">${data.company_name}</span></div>
-            <div class="details-row"><span class="details-label">Address:</span> <span class="details-value">${data.company_address}</span></div>
-            <div class="details-row"><span class="details-label">Dates:</span> <span class="details-value">${data.start_date} to ${data.end_date}</span></div>
+            <div class="det-status-row">
+                <div>
+                    <div class="student-name">${escapeHtml(data.full_name)}</div>
+                    <div class="student-meta">Level ${escapeHtml(data.level)} &middot; ${escapeHtml(data.program)}</div>
+                </div>
+                ${statusBadge(data.status)}
+            </div>
+
+            <div class="det-section">
+                <h4>Host Organisation</h4>
+                <div class="det-grid">
+                    <span class="det-label">Company</span>
+                    <span class="det-value">${escapeHtml(data.company_name)}</span>
+                    <span class="det-label">Address</span>
+                    <span class="det-value">${escapeHtml(data.company_address)}</span>
+                </div>
+            </div>
+
+            <div class="det-section">
+                <h4>Attachment Period</h4>
+                <div class="det-grid">
+                    <span class="det-label">Start</span><span class="det-value">${start}</span>
+                    <span class="det-label">End</span><span class="det-value">${end}</span>
+                    ${weeks ? `<span class="det-label">Duration</span><span class="det-value">${weeks}</span>` : ''}
+                </div>
+            </div>
+
+            <div class="det-section">
+                <h4>Submission</h4>
+                <div class="det-grid">
+                    <span class="det-label">Requested</span>
+                    <span class="det-value">${fmtDate(data.request_date)}</span>
+                </div>
+            </div>
+
+            ${rejection}
         `;
-        document.getElementById('detailsModal').style.display = 'block';
+
+        // Show download letter only if approved
+        if (data.status === 'approved') {
+            dl.href = BASE_URL + 'api/generate_letter.php?id=' + encodeURIComponent(data.id);
+            dl.style.display = '';
+        } else {
+            dl.style.display = 'none';
+        }
+
+        document.getElementById('detailsModal').classList.add('open');
     }
 
     // 2. Close Modal
-    function closeModal() { 
-        document.getElementById('detailsModal').style.display = 'none'; 
+    function closeModal() {
+        document.getElementById('detailsModal').classList.remove('open');
     }
 
     // 3. Rejection Logic

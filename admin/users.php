@@ -42,9 +42,6 @@ $total_users = count($users);
 
 <?php include __DIR__ . '/../includes/sidebar.php'; ?>
 
-    <div class="main-content">
-        </div>
-
 <div class="main-content">
     <div class="header-panel">
         <div>

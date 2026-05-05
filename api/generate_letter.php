@@ -17,13 +17,28 @@ if (!isset($_SESSION['user_id'])) {
 $request_id = $_GET['id'] ?? null;
 
 // 3. Fetch Data
+//
+// HOD lookup picks the BEST match for the student's department:
+//   1. prefer not archived,
+//   2. prefer one with an uploaded signature,
+//   3. then most recently created.
+// This avoids the bug where two HODs exist for the same department
+// and the join would arbitrarily pick the wrong one.
 try {
-    $stmt = $pdo->prepare("SELECT r.*, u.full_name, u.index_number, u.department, u.program, 
-                                  h.signature_path, h.full_name as hod_name, h.job_title
-                           FROM requests r
-                           JOIN users u ON r.student_id = u.id
-                           JOIN users h ON u.department = h.department AND h.role = 'hod'
-                           WHERE r.id = ?");
+    $stmt = $pdo->prepare("
+        SELECT r.*, u.full_name, u.index_number, u.department, u.program,
+               h.signature_path, h.full_name AS hod_name, h.job_title
+        FROM requests r
+        JOIN users u ON r.student_id = u.id
+        LEFT JOIN users h
+               ON h.department = u.department
+              AND h.role       = 'hod'
+              AND COALESCE(h.is_archived, 0) = 0
+        WHERE r.id = ?
+        ORDER BY (h.signature_path IS NOT NULL AND h.signature_path <> '') DESC,
+                 h.id DESC
+        LIMIT 1
+    ");
     $stmt->execute([$request_id]);
     $data = $stmt->fetch();
 } catch (PDOException $e) {
@@ -31,7 +46,10 @@ try {
 }
 
 if (!$data) {
-    die("Request record not found or HOD not assigned to this department.");
+    die("Request record not found.");
+}
+if (empty($data['hod_name'])) {
+    die("No active HOD assigned to the " . htmlspecialchars($data['department'] ?? '') . " department. Ask the admin to assign one before generating letters.");
 }
 
 // Check if the user specifically chose a generic letter

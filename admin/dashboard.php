@@ -135,11 +135,11 @@ $requests = $stmtReq->fetchAll();
                     <?php foreach($requests as $req): ?>
                     <tr>
                         <td>
-                            <div style="font-weight: 600;"><?php echo htmlspecialchars($req['full_name']); ?></div>
-                            <small style="color: #64748b;"><?php echo htmlspecialchars($req['index_number']); ?></small>
+                            <div style="font-weight: 600;"><?php echo htmlspecialchars($req['full_name'] ?? ''); ?></div>
+                            <small style="color: #64748b;"><?php echo htmlspecialchars($req['index_number'] ?? ''); ?></small>
                         </td>
-                        <td><span class="dept-badge"><?php echo htmlspecialchars($req['department']); ?></span></td>
-                        <td><?php echo htmlspecialchars($req['company_name']); ?></td>
+                        <td><span class="dept-badge"><?php echo htmlspecialchars($req['department'] ?? ''); ?></span></td>
+                        <td><?php echo htmlspecialchars($req['company_name'] ?? ''); ?></td>
                         <td><span class="status-badge <?php echo $req['status']; ?>"><?php echo ucfirst($req['status']); ?></span></td>
                         <td>
                             <button onclick='viewDetails(<?php echo htmlspecialchars(json_encode($req), ENT_QUOTES, "UTF-8"); ?>)' class="btn-action">

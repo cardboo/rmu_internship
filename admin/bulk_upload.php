@@ -69,6 +69,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_FILES['student_csv'])) {
     <title>Bulk Upload | Admin</title>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <link rel="stylesheet" href="<?php echo asset('css/style.css'); ?>">
+    <link rel="stylesheet" href="<?php echo asset('css/layout.css'); ?>">
     <style>
         .upload-box { background: white; padding: 40px; border-radius: 12px; text-align: center; border: 2px dashed #0D8ABC; max-width: 600px; margin: 20px auto; }
         .success-banner { background: #dcfce7; color: #166534; padding: 15px; border-radius: 8px; margin-bottom: 20px; font-weight: bold; text-align: center; }

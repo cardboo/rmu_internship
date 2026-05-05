@@ -60,8 +60,9 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
     <title>RMU Internship Portal | Login</title>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <link rel="stylesheet" href="<?php echo asset('css/login.css'); ?>">
+    <link rel="stylesheet" href="<?php echo asset('css/layout.css'); ?>">
 </head>
-<body class="login-body">
+<body class="login-body no-sidebar">
     <div class="login-card">
         <div style="text-align: center;">
             <img src="<?php echo asset('images/logo.jpg'); ?>" alt="RMU Logo" style="width: 100px; margin-bottom: 1rem; border-radius: 8px;">

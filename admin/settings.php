@@ -59,6 +59,7 @@ while ($row = $stmt->fetch()) {
     <title>System Settings | RMU Portal</title>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <link rel="stylesheet" href="<?php echo asset('css/style.css'); ?>">
+    <link rel="stylesheet" href="<?php echo asset('css/layout.css'); ?>">
     <style>
         .settings-container { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-top: 20px; }
         .form-card { background: white; padding: 25px; border-radius: 12px; border: 1px solid var(--border); box-shadow: 0 4px 6px rgba(0,0,0,0.05); }

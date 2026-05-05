@@ -75,6 +75,7 @@ $user = $stmt->fetch();
     <title>My Profile | Admin Portal</title>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <link rel="stylesheet" href="<?php echo asset('css/style.css'); ?>">
+    <link rel="stylesheet" href="<?php echo asset('css/layout.css'); ?>">
     <style>
         .profile-card { background: white; border-radius: 15px; border: 1px solid var(--border); overflow: hidden; max-width: 800px; margin: 20px auto; display: flex; }
         .profile-sidebar { background: #f8fafc; padding: 40px; text-align: center; border-right: 1px solid var(--border); width: 300px; }

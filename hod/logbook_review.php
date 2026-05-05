@@ -49,6 +49,7 @@ $all_logs = $stmt->fetchAll();
     <meta charset="UTF-8">
     <title>Departmental Reviews | RMU</title>
     <link rel="stylesheet" href="<?php echo asset('css/style.css'); ?>">
+    <link rel="stylesheet" href="<?php echo asset('css/layout.css'); ?>">
 </head>
 <body>
     <?php include __DIR__ . '/../includes/sidebar.php'; ?>

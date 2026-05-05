@@ -53,6 +53,7 @@ $logs = $stmt->fetchAll();
     <title>Weekly Logbook | RMU</title>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <link rel="stylesheet" href="<?php echo asset('css/style.css'); ?>">
+    <link rel="stylesheet" href="<?php echo asset('css/layout.css'); ?>">
     <style>
         .log-card { background: white; padding: 20px; border-radius: 10px; margin-bottom: 20px; border-left: 5px solid var(--primary, #0D8ABC); box-shadow: 0 2px 4px rgba(0,0,0,0.05); }
         .proof-link { display: inline-block; margin-top: 10px; color: var(--primary, #0D8ABC); font-weight: 600; text-decoration: none; padding: 5px 10px; background: #f0f4ff; border-radius: 5px; transition: 0.3s; }

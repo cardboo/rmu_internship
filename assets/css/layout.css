@@ -1,0 +1,59 @@
+/* ============================================================
+   Layout shell  (assets/css/layout.css)
+   v2 structural rules. Loaded AFTER style.css so it wins on
+   positioning. Intentionally only handles geometry (position,
+   width, margin, z-index) — colors/typography stay in style.css.
+   ============================================================ */
+
+html, body {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+*,
+*::before,
+*::after {
+    box-sizing: inherit;
+}
+
+/* ---------- Sidebar: fixed left rail ---------- */
+.sidebar {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 240px;
+    height: 100vh;
+    overflow-y: auto;
+    z-index: 100;
+}
+
+/* ---------- Main content: pushed right of the sidebar ---------- */
+.main-content {
+    margin-left: 240px;
+    min-height: 100vh;
+    padding: 30px 40px;
+}
+
+/* Tablet — slimmer rail, same shape */
+@media (max-width: 992px) {
+    .sidebar      { width: 210px; }
+    .main-content { margin-left: 210px; padding: 24px; }
+}
+
+/* Phone — sidebar collapses to top bar, content takes full width */
+@media (max-width: 600px) {
+    .sidebar {
+        position: relative;
+        width: 100%;
+        height: auto;
+        max-height: 50vh;
+    }
+    .main-content {
+        margin-left: 0;
+        padding: 16px;
+    }
+}
+
+/* Pages with no sidebar (login, register) — neutralize layout */
+body.no-sidebar .main-content { margin-left: 0; }

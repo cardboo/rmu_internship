@@ -1,11 +1,17 @@
 <?php
 if (session_status() === PHP_SESSION_NONE) { session_start(); }
 
+// Don't render the sidebar at all for unauthenticated users.
+// Pages already gate on session, but this is a defensive belt-and-braces.
+if (empty($_SESSION['user_id']) || empty($_SESSION['role'])) {
+    return;
+}
+
 // "role/file.php" relative to project root, used to highlight the active link.
 $script_path  = str_replace('\\', '/', $_SERVER['SCRIPT_NAME'] ?? '');
 $current_path = ltrim(preg_replace('#^' . preg_quote(rtrim(BASE_URL, '/'), '#') . '#', '', $script_path), '/');
 
-$role = $_SESSION['role'] ?? 'guest';
+$role = $_SESSION['role'];
 
 $display_name     = $_SESSION['name'] ?? 'User';
 $profile_filename = $_SESSION['profile_pic'] ?? '';
@@ -21,12 +27,14 @@ $dash_routes = [
 ];
 $dash_link = $dash_routes[$role] ?? 'index.php';
 
+// Roles without a dedicated profile page have the link hidden entirely
+// (rather than dumping the user back at the login screen).
 $profile_routes = [
     'admin'   => 'admin/profile.php',
     'hod'     => 'hod/profile.php',
     'student' => 'student/profile.php',
 ];
-$profile_link = $profile_routes[$role] ?? 'index.php';
+$profile_link = $profile_routes[$role] ?? null;
 
 if (!function_exists('nav_active')) {
     function nav_active(string $route, string $current): string {
@@ -93,9 +101,11 @@ if (!function_exists('nav_active')) {
         <?php endif; ?>
 
         <div class="nav-section">ACCOUNT</div>
-        <a href="<?php echo url($profile_link); ?>" class="<?php echo nav_active($profile_link, $current_path); ?>">
-            <i class="fas fa-user-circle"></i>&nbsp;&nbsp;My Profile
-        </a>
+        <?php if ($profile_link): ?>
+            <a href="<?php echo url($profile_link); ?>" class="<?php echo nav_active($profile_link, $current_path); ?>">
+                <i class="fas fa-user-circle"></i>&nbsp;&nbsp;My Profile
+            </a>
+        <?php endif; ?>
         <a href="<?php echo url('logout.php'); ?>" class="logout-link">
             <i class="fas fa-sign-out-alt"></i>&nbsp;&nbsp;Logout
         </a>

@@ -47,3 +47,7 @@ if (!function_exists('url')) {
         return BASE_URL . ltrim($relative, '/');
     }
 }
+
+// Auth helpers + force-password-change gate.
+require_once __DIR__ . '/auth.php';
+enforce_password_change();

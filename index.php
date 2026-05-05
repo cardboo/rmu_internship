@@ -33,7 +33,16 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
         if ($avatar === '' || $avatar === 'default.png') $avatar = null;
         $_SESSION['profile_pic'] = $avatar;
 
-        // 4. Role-Based Redirection
+        // Force-password-change flag (column added in migration 003;
+        // coalesce so the login still works on databases that haven't
+        // run that migration yet).
+        $_SESSION['must_change_password'] = !empty($user['must_change_password']);
+
+        // 4. Role-Based Redirection (or send to change_password if forced)
+        if ($_SESSION['must_change_password']) {
+            header("Location: " . BASE_URL . "change_password.php");
+            exit;
+        }
         switch ($user['role']) {
             case 'admin':
                 header("Location: " . BASE_URL . "admin/dashboard.php");

@@ -11,33 +11,49 @@ $student_id = $_SESSION['user_id'];
 $message = "";
 
 if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['submit_log'])) {
-    $week = $_POST['week_number'];
-    $start = $_POST['start_date'];
-    $end = $_POST['end_date'];
+    $week       = $_POST['week_number'];
+    $start      = $_POST['start_date'];
+    $end        = $_POST['end_date'];
     $activities = $_POST['activities'];
-    
-    $file_path = null;
 
-    // Handle File Upload - Better Folder Organization
-    if (isset($_FILES['proof_file']) && $_FILES['proof_file']['error'] == 0) {
-        // Filesystem dir is anchored to the project root via __DIR__.
-        $logbook_dir = __DIR__ . '/../uploads/logbooks/';
-        if (!is_dir($logbook_dir)) mkdir($logbook_dir, 0777, true);
-
-        $file_ext = pathinfo($_FILES['proof_file']['name'], PATHINFO_EXTENSION);
-        $new_filename = "log_" . $student_id . "_w" . $week . "_" . time() . "." . $file_ext;
-        $target_file = $logbook_dir . $new_filename;
-
-        if (move_uploaded_file($_FILES['proof_file']['tmp_name'], $target_file)) {
-            // DB stores the project-root-relative path so view links can prefix BASE_URL.
-            $file_path = 'uploads/logbooks/' . $new_filename;
-        }
+    // Server-side guard: dates may not be in the past, end >= start.
+    $today_str = date('Y-m-d');
+    $err = null;
+    if ($start < $today_str || $end < $today_str) {
+        $err = 'Logbook dates cannot be in the past.';
+    } elseif ($end < $start) {
+        $err = 'End date must be on or after the start date.';
     }
 
-    $stmt = $pdo->prepare("INSERT INTO logbooks (student_id, week_number, start_date, end_date, activities, file_path) VALUES (?, ?, ?, ?, ?, ?)");
-    if ($stmt->execute([$student_id, $week, $start, $end, $activities, $file_path])) {
-        // Updated to match your portal's design system
-        $message = "<div class='status-badge active' style='margin-bottom: 20px; width: 100%; text-align: center; padding: 15px;'><i class='fas fa-check-circle'></i> Week $week logbook and proof submitted successfully!</div>";
+    if ($err) {
+        $message = "<div class='banner banner-error' style='margin-bottom:20px;'>"
+                 . htmlspecialchars($err) . "</div>";
+    } else {
+        $file_path = null;
+
+        // Handle File Upload - filesystem dir is anchored via __DIR__.
+        if (isset($_FILES['proof_file']) && $_FILES['proof_file']['error'] == 0) {
+            $logbook_dir = __DIR__ . '/../uploads/logbooks/';
+            if (!is_dir($logbook_dir)) mkdir($logbook_dir, 0777, true);
+
+            $file_ext     = pathinfo($_FILES['proof_file']['name'], PATHINFO_EXTENSION);
+            $new_filename = "log_" . $student_id . "_w" . $week . "_" . time() . "." . $file_ext;
+            $target_file  = $logbook_dir . $new_filename;
+
+            if (move_uploaded_file($_FILES['proof_file']['tmp_name'], $target_file)) {
+                // DB stores the project-root-relative path so view links can prefix BASE_URL.
+                $file_path = 'uploads/logbooks/' . $new_filename;
+            }
+        }
+
+        $stmt = $pdo->prepare(
+            "INSERT INTO logbooks (student_id, week_number, start_date, end_date, activities, file_path)
+             VALUES (?, ?, ?, ?, ?, ?)"
+        );
+        if ($stmt->execute([$student_id, $week, $start, $end, $activities, $file_path])) {
+            $message = "<div class='status-badge active' style='margin-bottom: 20px; width: 100%; text-align: center; padding: 15px;'><i class='fas fa-check-circle'></i> Week "
+                     . htmlspecialchars($week) . " logbook and proof submitted successfully!</div>";
+        }
     }
 }
 
@@ -85,13 +101,16 @@ $logs = $stmt->fetchAll();
                         <label style="font-weight: 600; font-size: 0.85rem;">Week #</label>
                         <input type="number" name="week_number" required class="date-chip" min="1" style="width: 100%; margin-top: 5px;">
                     </div>
+<?php $today = date('Y-m-d'); ?>
                     <div class="metric-box">
                         <label style="font-weight: 600; font-size: 0.85rem;">From Date</label>
-                        <input type="date" name="start_date" required class="date-chip" style="width: 100%; margin-top: 5px;">
+                        <input type="date" name="start_date" required min="<?php echo $today; ?>"
+                               class="date-chip" style="width: 100%; margin-top: 5px;">
                     </div>
                     <div class="metric-box">
                         <label style="font-weight: 600; font-size: 0.85rem;">To Date</label>
-                        <input type="date" name="end_date" required class="date-chip" style="width: 100%; margin-top: 5px;">
+                        <input type="date" name="end_date" required min="<?php echo $today; ?>"
+                               class="date-chip" style="width: 100%; margin-top: 5px;">
                     </div>
                 </div>
 

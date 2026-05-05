@@ -1,0 +1,112 @@
+/* ============================================================
+   Programs & Departments page  (admin/programs.php)
+   Reuses base classes from registry.css; only adds the bits
+   specific to this page (department groups, action buttons,
+   compact tables, edit-card highlight).
+   ============================================================ */
+
+.dept-group {
+    margin-top: 24px;
+    padding-top: 8px;
+    border-top: 1px solid var(--reg-border, #e2e8f0);
+}
+.dept-group:first-child {
+    margin-top: 0;
+    border-top: none;
+    padding-top: 0;
+}
+.dept-group h4 {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    color: #0f172a;
+    font-size: 1rem;
+    margin: 12px 0;
+}
+.count-pill {
+    background: #e0f2fe;
+    color: #0369a1;
+    font-size: 0.7rem;
+    font-weight: 700;
+    padding: 2px 8px;
+    border-radius: 999px;
+}
+
+/* Compact table for programs/departments listings */
+.prog-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.92rem;
+}
+.prog-table thead th {
+    text-align: left;
+    background: #f8fafc;
+    color: #475569;
+    font-weight: 600;
+    font-size: 0.78rem;
+    text-transform: uppercase;
+    letter-spacing: 0.4px;
+    padding: 10px 12px;
+    border-bottom: 1px solid #e2e8f0;
+}
+.prog-table tbody td {
+    padding: 10px 12px;
+    border-bottom: 1px solid #f1f5f9;
+    color: #1e293b;
+}
+.prog-table tbody tr:last-child td {
+    border-bottom: none;
+}
+.prog-table tbody tr:hover {
+    background: #f8fafc;
+}
+.prog-table code {
+    background: #f1f5f9;
+    color: #475569;
+    padding: 2px 6px;
+    border-radius: 4px;
+    font-size: 0.8rem;
+}
+.actions-col {
+    width: 110px;
+    text-align: right;
+    white-space: nowrap;
+}
+
+/* Small button variant */
+.btn-sm {
+    padding: 6px 10px;
+    font-size: 0.8rem;
+}
+.btn-danger {
+    color: #b91c1c;
+}
+.btn-danger:hover {
+    background: #fee2e2;
+    color: #991b1b;
+}
+
+/* Edit card highlight (so users see they're in edit mode) */
+.edit-card {
+    border-left: 4px solid var(--reg-primary, #0D8ABC);
+    background: #f0f9ff;
+}
+.edit-card h3 {
+    color: #0c4a6e;
+}
+
+@media (max-width: 720px) {
+    .actions-col { width: auto; }
+    .prog-table { font-size: 0.85rem; }
+    .prog-table thead { display: none; }
+    .prog-table tbody td {
+        display: block;
+        padding: 6px 8px;
+        border: none;
+    }
+    .prog-table tbody tr {
+        display: block;
+        padding: 10px;
+        border-bottom: 1px solid #e2e8f0;
+    }
+}

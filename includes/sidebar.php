@@ -72,6 +72,9 @@ if (!function_exists('nav_active')) {
             <a href="<?php echo url('admin/registry.php'); ?>" class="<?php echo nav_active('admin/registry.php', $current_path); ?>">
                 <i class="fas fa-database"></i>&nbsp;&nbsp;Student Registry
             </a>
+            <a href="<?php echo url('admin/programs.php'); ?>" class="<?php echo nav_active('admin/programs.php', $current_path); ?>">
+                <i class="fas fa-graduation-cap"></i>&nbsp;&nbsp;Programs &amp; Depts
+            </a>
             <a href="<?php echo url('admin/bulk_upload.php'); ?>" class="<?php echo nav_active('admin/bulk_upload.php', $current_path); ?>">
                 <i class="fas fa-upload"></i>&nbsp;&nbsp;Bulk Upload
             </a>

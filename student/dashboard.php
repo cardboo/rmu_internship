@@ -1,9 +1,9 @@
 <?php
-require 'db.php';
+require __DIR__ . '/../includes/db.php';
 
 // Security Check
 if (!isset($_SESSION['user_id']) || $_SESSION['role'] != 'student') {
-    header("Location: index.php");
+    header("Location: " . BASE_URL . "index.php");
     exit;
 }
 
@@ -53,7 +53,7 @@ $my_requests = $stmt->fetchAll();
     <meta charset="UTF-8">
     <title>Student Dashboard | RMU Portal</title>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-    <link rel="stylesheet" href="css/style.css">
+    <link rel="stylesheet" href="<?php echo asset('css/style.css'); ?>">
     <style>
         .form-card { background: white; padding: 25px; border-radius: 12px; margin-bottom: 30px; box-shadow: 0 4px 6px rgba(0,0,0,0.05); }
         .toggle-container { display: flex; align-items: center; margin-bottom: 20px; background: #f1f5f9; padding: 10px; border-radius: 8px; }
@@ -68,7 +68,7 @@ $my_requests = $stmt->fetchAll();
     </style>
 </head>
 <body>
-    <?php include 'sidebar.php'; ?>
+    <?php include __DIR__ . '/../includes/sidebar.php'; ?>
 
     <div class="main-content">
         <h1>Industrial Attachment Request</h1>
@@ -137,7 +137,7 @@ $my_requests = $stmt->fetchAll();
                         <td><span class="status-badge <?php echo $r['status']; ?>"><?php echo ucfirst($r['status']); ?></span></td>
                         <td>
                             <?php if($r['status'] == 'approved'): ?>
-                                <a href="generate_letter.php?id=<?php echo $r['id']; ?>" target="_blank" style="color: #0D8ABC;"><i class="fas fa-file-pdf"></i> Download</a>
+                                <a href="<?php echo BASE_URL; ?>api/generate_letter.php?id=<?php echo $r['id']; ?>" target="_blank" style="color: #0D8ABC;"><i class="fas fa-file-pdf"></i> Download</a>
                             <?php else: ?>
                                 <span style="color: #94a3b8;">N/A</span>
                             <?php endif; ?>

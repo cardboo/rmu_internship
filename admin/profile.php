@@ -1,12 +1,14 @@
 <?php
 if (session_status() === PHP_SESSION_NONE) { session_start(); }
-require 'db.php';
+require __DIR__ . '/../includes/db.php';
 
 // Security: Ensure only admins access this page
 if (!isset($_SESSION['user_id']) || $_SESSION['role'] !== 'admin') {
-    header("Location: index.php");
+    header("Location: " . BASE_URL . "index.php");
     exit;
 }
+
+$PROFILE_DIR = __DIR__ . '/../assets/images/profiles/';
 
 $user_id = $_SESSION['user_id'];
 $success = "";
@@ -32,7 +34,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
 
     // 2. Handle Profile Image Upload
     if (isset($_FILES['profile_image']) && $_FILES['profile_image']['error'] === 0) {
-        $target_dir = "images/profiles/";
+        $target_dir = $PROFILE_DIR;
         if (!is_dir($target_dir)) { mkdir($target_dir, 0777, true); }
 
         $file_ext = strtolower(pathinfo($_FILES["profile_image"]["name"], PATHINFO_EXTENSION));
@@ -72,7 +74,7 @@ $user = $stmt->fetch();
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>My Profile | Admin Portal</title>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-    <link rel="stylesheet" href="css/style.css">
+    <link rel="stylesheet" href="<?php echo asset('css/style.css'); ?>">
     <style>
         .profile-card { background: white; border-radius: 15px; border: 1px solid var(--border); overflow: hidden; max-width: 800px; margin: 20px auto; display: flex; }
         .profile-sidebar { background: #f8fafc; padding: 40px; text-align: center; border-right: 1px solid var(--border); width: 300px; }
@@ -87,7 +89,7 @@ $user = $stmt->fetch();
 </head>
 <body>
 
-    <?php include 'sidebar.php'; ?>
+    <?php include __DIR__ . '/../includes/sidebar.php'; ?>
 
     <div class="main-content">
         <div class="header-panel">
@@ -109,8 +111,10 @@ $user = $stmt->fetch();
 
         <div class="profile-card">
             <div class="profile-sidebar">
-                <?php 
-                    $pic = !empty($user['profile_pic']) ? "images/profiles/" . $user['profile_pic'] : "images/logo.jpg";
+                <?php
+                    $pic = !empty($user['profile_pic'])
+                        ? asset('images/profiles/' . $user['profile_pic'])
+                        : asset('images/logo.jpg');
                 ?>
                 <img src="<?php echo $pic; ?>" class="current-avatar" alt="Admin Avatar">
                 <h3 style="font-size: 1.1rem;"><?php echo htmlspecialchars($user['full_name']); ?></h3>

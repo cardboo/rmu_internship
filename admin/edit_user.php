@@ -1,16 +1,16 @@
 <?php
 if (session_status() === PHP_SESSION_NONE) { session_start(); }
-require 'db.php';
+require __DIR__ . '/../includes/db.php';
 
 // 1. SECURITY: Must be Admin
 if (!isset($_SESSION['user_id']) || $_SESSION['role'] !== 'admin') {
-    header("Location: index.php");
+    header("Location: " . BASE_URL . "index.php");
     exit;
 }
 
 // 2. FETCH USER DATA
 if (!isset($_GET['id']) || empty($_GET['id'])) {
-    header("Location: manage_users.php");
+    header("Location: users.php");
     exit;
 }
 $user_id = $_GET['id'];
@@ -61,11 +61,11 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Edit User | RMU Portal</title>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-    <link rel="stylesheet" href="css/style.css">
+    <link rel="stylesheet" href="<?php echo asset('css/style.css'); ?>">
 </head>
 <body>
 
-    <?php include 'sidebar.php'; ?>
+    <?php include __DIR__ . '/../includes/sidebar.php'; ?>
 
     <div class="main-content">
         <div class="header-panel">
@@ -73,7 +73,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
                 <h1>Edit User Account</h1>
                 <p>Modify credentials for <strong><?php echo htmlspecialchars($target_user['full_name']); ?></strong></p>
             </div>
-            <a href="manage_users.php" class="date-chip" style="text-decoration: none; color: inherit;">
+            <a href="users.php" class="date-chip" style="text-decoration: none; color: inherit;">
                 <i class="fas fa-arrow-left"></i> Back to List
             </a>
         </div>

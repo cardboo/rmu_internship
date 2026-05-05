@@ -4,7 +4,7 @@ if (session_status() === PHP_SESSION_NONE) {
     session_start();
 }
 
-require 'db.php';
+require __DIR__ . '/includes/db.php';
 
 if ($_SERVER['REQUEST_METHOD'] == 'POST') {
     // 1. Trim inputs to remove invisible spaces
@@ -30,16 +30,16 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
         // 4. Role-Based Redirection
         switch ($user['role']) {
             case 'admin':
-                header("Location: admin_dash.php");
+                header("Location: " . BASE_URL . "admin/dashboard.php");
                 break;
             case 'hod':
-                header("Location: hod_dash.php");
+                header("Location: " . BASE_URL . "hod/dashboard.php");
                 break;
             case 'secretary':
-                header("Location: sec_dash.php");
+                header("Location: " . BASE_URL . "secretary/dashboard.php");
                 break;
             case 'student':
-                header("Location: student_dash.php");
+                header("Location: " . BASE_URL . "student/dashboard.php");
                 break;
             default:
                 $error = "User role not recognized.";
@@ -59,12 +59,12 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>RMU Internship Portal | Login</title>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-    <link rel="stylesheet" href="css/login.css">
+    <link rel="stylesheet" href="<?php echo asset('css/login.css'); ?>">
 </head>
 <body class="login-body">
     <div class="login-card">
         <div style="text-align: center;">
-            <img src="images/logo.jpg" alt="RMU Logo" style="width: 100px; margin-bottom: 1rem; border-radius: 8px;">
+            <img src="<?php echo asset('images/logo.jpg'); ?>" alt="RMU Logo" style="width: 100px; margin-bottom: 1rem; border-radius: 8px;">
             <h2 style="color: #0D8ABC; margin-bottom: 5px;">RMU</h2>
             <p style="color: #666; font-size: 0.9rem; margin-bottom: 20px;">Internship & Attachment Portal</p>
         </div>

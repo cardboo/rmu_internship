@@ -1,5 +1,5 @@
 <?php
-require 'db.php';
+require __DIR__ . '/../includes/db.php';
 header('Content-Type: application/json');
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_SESSION['user_id']) && $_SESSION['role'] === 'hod') {

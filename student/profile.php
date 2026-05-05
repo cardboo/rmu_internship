@@ -1,13 +1,15 @@
 <?php
 // CRITICAL: Always start the session first
 session_start();
-require 'db.php';
+require __DIR__ . '/../includes/db.php';
 
 // Security Check
 if (!isset($_SESSION['user_id']) || $_SESSION['role'] != 'student') {
-    header("Location: index.php");
+    header("Location: " . BASE_URL . "index.php");
     exit;
 }
+
+$PROFILE_DIR = __DIR__ . '/../assets/images/profiles/';
 
 $user_id = $_SESSION['user_id'];
 $message = "";
@@ -24,8 +26,8 @@ $user = $stmt->fetch();
 // Helper for Profile Image URL
 $displayName = urlencode($user['full_name']);
 $defaultAvatar = "https://ui-avatars.com/api/?name=$displayName&background=0D8ABC&color=fff";
-$currentPhoto = (!empty($user['profile_path']) && file_exists("images/profiles/" . $user['profile_path'])) 
-                ? "images/profiles/" . $user['profile_path'] 
+$currentPhoto = (!empty($user['profile_path']) && file_exists($PROFILE_DIR . $user['profile_path']))
+                ? asset('images/profiles/' . $user['profile_path'])
                 : $defaultAvatar;
 
 // 2. Handle Profile Picture Upload
@@ -36,7 +38,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_FILES['profile_pix'])) {
     if (in_array($file['type'], $allowed)) {
         $ext = pathinfo($file['name'], PATHINFO_EXTENSION);
         $new_name = "profile_" . $user_id . "_" . time() . "." . $ext;
-        $folder = "images/profiles/";
+        $folder = $PROFILE_DIR;
         $path = $folder . $new_name;
 
         if (!is_dir($folder)) mkdir($folder, 0777, true);
@@ -46,13 +48,13 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_FILES['profile_pix'])) {
             if (!empty($user['profile_path']) && file_exists($folder . $user['profile_path'])) {
                 unlink($folder . $user['profile_path']);
             }
-            
+
             $pdo->prepare("UPDATE users SET profile_path = ? WHERE id = ?")->execute([$new_name, $user_id]);
             $message = "Profile picture updated successfully!";
-            
+
             // Refresh local data to show new image immediately
             $user['profile_path'] = $new_name;
-            $currentPhoto = $path;
+            $currentPhoto = asset('images/profiles/' . $new_name);
         }
     } else {
         $error = "Invalid file type. Please use PNG or JPG.";
@@ -83,7 +85,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['new_password'])) {
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>My Profile | Student Portal</title>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-    <link rel="stylesheet" href="css/style.css">
+    <link rel="stylesheet" href="<?php echo asset('css/style.css'); ?>">
     <style>
         .profile-card { background: white; padding: 30px; border-radius: 12px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); max-width: 700px; margin: 0 auto; }
         .status-banner { padding: 15px; border-radius: 8px; margin-bottom: 20px; font-weight: 600; text-align: center; }
@@ -101,7 +103,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['new_password'])) {
     </style>
 </head>
 <body>
-    <?php include 'sidebar.php'; ?>
+    <?php include __DIR__ . '/../includes/sidebar.php'; ?>
 
     <div class="main-content">
         <h1>Profile Settings</h1>

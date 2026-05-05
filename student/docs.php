@@ -1,10 +1,10 @@
 <?php
 if (session_status() === PHP_SESSION_NONE) { session_start(); }
-require 'db.php';
+require __DIR__ . '/../includes/db.php';
 
 // Access Control
 if (!isset($_SESSION['user_id']) || $_SESSION['role'] !== 'student') {
-    header("Location: index.php"); 
+    header("Location: " . BASE_URL . "index.php"); 
     exit;
 }
 
@@ -17,7 +17,7 @@ $user_id = $_SESSION['user_id'];
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Internship Templates | RMU</title>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-    <link rel="stylesheet" href="css/style.css">
+    <link rel="stylesheet" href="<?php echo asset('css/style.css'); ?>">
     <style>
         .doc-card { 
             background: white; 
@@ -58,7 +58,7 @@ $user_id = $_SESSION['user_id'];
 </head>
 <body>
 
-    <?php include 'sidebar.php'; ?>
+    <?php include __DIR__ . '/../includes/sidebar.php'; ?>
 
     <div class="main-content">
         <div class="header-panel">
@@ -78,7 +78,7 @@ $user_id = $_SESSION['user_id'];
             </div>
             
             <div class="template-grid">
-                <a href="download_template.php?file=weekly_log_template.pdf" class="download-btn">
+                <a href="<?php echo BASE_URL; ?>api/download_template.php?file=weekly_log_template.pdf" class="download-btn">
                     <div style="display: flex; align-items: center; gap: 15px;">
                         <i class="fas fa-file-pdf"></i>
                         <div>
@@ -89,7 +89,7 @@ $user_id = $_SESSION['user_id'];
                     <i class="fas fa-download" style="color: var(--primary);"></i>
                 </a>
 
-                <a href="download_template.php?file=final_evaluation_form.pdf" class="download-btn">
+                <a href="<?php echo BASE_URL; ?>api/download_template.php?file=final_evaluation_form.pdf" class="download-btn">
                     <div style="display: flex; align-items: center; gap: 15px;">
                         <i class="fas fa-file-pdf"></i>
                         <div>

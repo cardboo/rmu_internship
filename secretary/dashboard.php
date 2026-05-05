@@ -1,9 +1,9 @@
 <?php
-require 'db.php';
+require __DIR__ . '/../includes/db.php';
 
 // 1. Security Check: Role must be 'secretary'
 if (!isset($_SESSION['user_id']) || $_SESSION['role'] != 'secretary') {
-    header("Location: index.php");
+    header("Location: " . BASE_URL . "index.php");
     exit;
 }
 
@@ -83,7 +83,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['update_id'])) {
     <meta charset="UTF-8">
     <title>Secretary Dashboard | RMU Portal</title>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-    <link rel="stylesheet" href="css/style.css">
+    <link rel="stylesheet" href="<?php echo asset('css/style.css'); ?>">
     <style>
         .modal { display: none; position: fixed; z-index: 1000; left: 0; top: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); }
         .modal-content { background: white; margin: 10% auto; padding: 25px; width: 450px; border-radius: 12px; box-shadow: 0 5px 15px rgba(0,0,0,0.3); }
@@ -97,7 +97,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['update_id'])) {
     </style>
 </head>
 <body>
-    <?php include 'sidebar.php'; ?>
+    <?php include __DIR__ . '/../includes/sidebar.php'; ?>
 
     <div class="main-content">
         <h1><?php echo htmlspecialchars($myDept); ?> | Secretary Portal</h1>
@@ -158,7 +158,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['update_id'])) {
                                     <i class="fas fa-times"></i>
                                 </button>
                             <?php elseif($req['status'] == 'approved'): ?>
-                                <a href="generate_letter.php?id=<?php echo $req['id']; ?>" target="_blank" style="color: #2563eb;"><i class="fas fa-file-pdf"></i></a>
+                                <a href="<?php echo BASE_URL; ?>api/generate_letter.php?id=<?php echo $req['id']; ?>" target="_blank" style="color: #2563eb;"><i class="fas fa-file-pdf"></i></a>
                             <?php endif; ?>
                         </td>
                     </tr>

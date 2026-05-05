@@ -1,10 +1,10 @@
 <?php
 if (session_status() === PHP_SESSION_NONE) { session_start(); }
-require 'db.php';
+require __DIR__ . '/../includes/db.php';
 
 // 1. Access Control
 if (!isset($_SESSION['user_id']) || $_SESSION['role'] !== 'admin') {
-    header("Location: index.php"); 
+    header("Location: " . BASE_URL . "index.php"); 
     exit;
 }
 
@@ -19,7 +19,7 @@ if (isset($_GET['delete_id'])) {
     } else {
         $msg = "error_self";
     }
-    header("Location: manage_users.php?msg=" . $msg); 
+    header("Location: users.php?msg=" . $msg); 
     exit;
 }
 
@@ -35,11 +35,11 @@ $total_users = count($users);
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Manage Users | RMU Portal</title>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-    <link rel="stylesheet" href="css/style.css"> 
+    <link rel="stylesheet" href="<?php echo asset('css/style.css'); ?>"> 
 </head>
 <body>
 
-<?php include 'sidebar.php'; ?>
+<?php include __DIR__ . '/../includes/sidebar.php'; ?>
 
     <div class="main-content">
         </div>
@@ -120,7 +120,7 @@ $total_users = count($users);
                             <a href="edit_user.php?id=<?php echo $u['id']; ?>" class="btn-action" title="Edit User">
                                 <i class="fas fa-edit"></i>
                             </a>
-                            <a href="manage_users.php?delete_id=<?php echo $u['id']; ?>" 
+                            <a href="users.php?delete_id=<?php echo $u['id']; ?>" 
                                class="btn-action btn-reject" 
                                onclick="return confirm('Permanent action: Are you sure you want to delete <?php echo addslashes($u['full_name']); ?>?')"
                                title="Delete User">

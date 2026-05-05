@@ -1,10 +1,10 @@
 <?php
 if (session_status() === PHP_SESSION_NONE) { session_start(); }
-require 'db.php';
+require __DIR__ . '/../includes/db.php';
 
 // Security Check
 if (!isset($_SESSION['user_id']) || $_SESSION['role'] != 'admin') {
-    header("Location: index.php");
+    header("Location: " . BASE_URL . "index.php");
     exit;
 }
 
@@ -58,7 +58,7 @@ while ($row = $stmt->fetch()) {
     <meta charset="UTF-8">
     <title>System Settings | RMU Portal</title>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-    <link rel="stylesheet" href="css/style.css">
+    <link rel="stylesheet" href="<?php echo asset('css/style.css'); ?>">
     <style>
         .settings-container { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-top: 20px; }
         .form-card { background: white; padding: 25px; border-radius: 12px; border: 1px solid var(--border); box-shadow: 0 4px 6px rgba(0,0,0,0.05); }
@@ -69,7 +69,7 @@ while ($row = $stmt->fetch()) {
     </style>
 </head>
 <body>
-    <?php include 'sidebar.php'; ?>
+    <?php include __DIR__ . '/../includes/sidebar.php'; ?>
 
     <div class="main-content">
         <div class="header-panel">

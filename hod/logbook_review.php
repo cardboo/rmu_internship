@@ -1,9 +1,9 @@
 <?php
-require 'db.php';
+require __DIR__ . '/../includes/db.php';
 
 // Access Control: HOD and Secretary only
 if (!isset($_SESSION['user_id']) || !in_array($_SESSION['role'], ['hod', 'secretary'])) {
-    header("Location: index.php");
+    header("Location: " . BASE_URL . "index.php");
     exit;
 }
 
@@ -48,10 +48,10 @@ $all_logs = $stmt->fetchAll();
 <head>
     <meta charset="UTF-8">
     <title>Departmental Reviews | RMU</title>
-    <link rel="stylesheet" href="css/style.css">
+    <link rel="stylesheet" href="<?php echo asset('css/style.css'); ?>">
 </head>
 <body>
-    <?php include 'sidebar.php'; ?>
+    <?php include __DIR__ . '/../includes/sidebar.php'; ?>
 
     <div class="main-content">
         <h1><?php echo htmlspecialchars($myDept); ?> Logbook Reviews</h1>

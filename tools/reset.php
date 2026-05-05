@@ -1,5 +1,5 @@
 <?php
-require 'db.php';
+require __DIR__ . '/../includes/db.php';
 
 // The password we want to use
 $plain_password = '123456';
@@ -19,7 +19,7 @@ try {
     echo "Success! Users have been reset.<br>";
     echo "Student: student@test.com / 123456<br>";
     echo "HOD: hod@test.com / 123456<br>";
-    echo "<a href='index.php'>Go to Login</a>";
+    echo "<a href='" . BASE_URL . "index.php'>Go to Login</a>";
 } catch (PDOException $e) {
     echo "Error: " . $e->getMessage();
 }

@@ -3,8 +3,8 @@ session_start();
 if (!isset($_SESSION['user_id'])) exit;
 
 if (isset($_GET['file'])) {
-    $file = basename($_GET['file']); 
-    $path = 'templates/' . $file;
+    $file = basename($_GET['file']);
+    $path = __DIR__ . '/../templates/' . $file;
 
     if (file_exists($path)) {
         header('Content-Description: File Transfer');

@@ -1,11 +1,13 @@
 <?php
-require 'db.php';
+require __DIR__ . '/../includes/db.php';
 
 // Security Check
 if (!isset($_SESSION['user_id']) || $_SESSION['role'] != 'hod') {
-    header("Location: index.php");
+    header("Location: " . BASE_URL . "index.php");
     exit;
 }
+
+$SIG_DIR = __DIR__ . '/../assets/images/signatures/';
 
 $user_id = $_SESSION['user_id'];
 $message = "";
@@ -37,16 +39,16 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_FILES['signature'])) {
 
         $extension = pathinfo($file['name'], PATHINFO_EXTENSION);
         $new_filename = "sig_" . $user_id . "_" . time() . "." . $extension;
-        $upload_path = "images/signatures/" . $new_filename;
+        $upload_path = $SIG_DIR . $new_filename;
 
-        if (!is_dir('images/signatures/')) {
-            mkdir('images/signatures/', 0777, true);
+        if (!is_dir($SIG_DIR)) {
+            mkdir($SIG_DIR, 0777, true);
         }
 
         if (move_uploaded_file($file['tmp_name'], $upload_path)) {
             // Delete old file if it exists
-            if ($oldSig && file_exists("images/signatures/" . $oldSig)) {
-                unlink("images/signatures/" . $oldSig);
+            if ($oldSig && file_exists($SIG_DIR . $oldSig)) {
+                unlink($SIG_DIR . $oldSig);
             }
 
             $upd = $pdo->prepare("UPDATE users SET signature_path = ? WHERE id = ?");
@@ -68,7 +70,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_FILES['signature'])) {
     <meta charset="UTF-8">
     <title>HOD Profile | RMU Portal</title>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-    <link rel="stylesheet" href="css/style.css">
+    <link rel="stylesheet" href="<?php echo asset('css/style.css'); ?>">
     <style>
         .notif-badge {
             background: #ef4444; color: white; padding: 2px 7px;
@@ -82,7 +84,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_FILES['signature'])) {
     </style>
 </head>
 <body>
-    <?php include 'sidebar.php'; ?>
+    <?php include __DIR__ . '/../includes/sidebar.php'; ?>
 
     <div class="main-content">
         <div class="header-top">
@@ -91,7 +93,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_FILES['signature'])) {
                 <span class="dept-tag"><?php echo htmlspecialchars($myDept); ?></span>
             </div>
             
-            <div class="notif-bell" onclick="location.href='hod_dash.php'" title="Pending Requests for <?php echo $myDept; ?>">
+            <div class="notif-bell" onclick="location.href='dashboard.php'" title="Pending Requests for <?php echo $myDept; ?>">
                 <i class="fas fa-bell"></i>
                 <?php if ($pendingCount > 0): ?>
                     <span class="notif-badge"><?php echo $pendingCount; ?></span>
@@ -116,7 +118,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_FILES['signature'])) {
                     <label style="display: block; margin-bottom: 8px; font-weight: 600; color: #475569;">Current Digital Signature</label>
                     <div style="border: 2px dashed #e2e8f0; padding: 20px; border-radius: 8px; text-align: center; background: #fcfcfc;">
                         <?php if ($user['signature_path']): ?>
-                            <img src="images/signatures/<?php echo $user['signature_path']; ?>" alt="Signature" style="max-height: 80px;">
+                            <img src="<?php echo asset('images/signatures/' . $user['signature_path']); ?>" alt="Signature" style="max-height: 80px;">
                         <?php else: ?>
                             <p style="color: #94a3b8; font-style: italic;">No signature uploaded yet.</p>
                         <?php endif; ?>

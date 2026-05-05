@@ -1,9 +1,9 @@
 <?php
-require 'db.php';
+require __DIR__ . '/../includes/db.php';
 
 // Security Check
 if (!isset($_SESSION['user_id']) || $_SESSION['role'] != 'hod') {
-    header("Location: index.php");
+    header("Location: " . BASE_URL . "index.php");
     exit;
 }
 
@@ -86,7 +86,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['update_id'])) {
     <meta charset="UTF-8">
     <title>HOD Dashboard | RMU Portal</title>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-    <link rel="stylesheet" href="css/style.css">
+    <link rel="stylesheet" href="<?php echo asset('css/style.css'); ?>">
     <style>
         .modal { display: none; position: fixed; z-index: 1000; left: 0; top: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); }
         .modal-content { background: white; margin: 10% auto; padding: 25px; width: 450px; border-radius: 12px; box-shadow: 0 5px 15px rgba(0,0,0,0.3); }
@@ -103,7 +103,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['update_id'])) {
     </style>
 </head>
 <body>
-    <?php include 'sidebar.php'; ?>
+    <?php include __DIR__ . '/../includes/sidebar.php'; ?>
 
     <div class="main-content">
         <div class="header-panel" style="display: flex; justify-content: space-between; align-items: center;">
@@ -123,7 +123,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['update_id'])) {
         <?php if (!$hasSignature): ?>
             <div class="sig-warning">
                 <i class="fas fa-exclamation-triangle"></i>
-                <span>You must <strong><a href="hod_profile.php" style="color: #991b1b; text-decoration: underline;">upload your digital signature</a></strong> before you can approve any requests.</span>
+                <span>You must <strong><a href="profile.php" style="color: #991b1b; text-decoration: underline;">upload your digital signature</a></strong> before you can approve any requests.</span>
             </div>
         <?php endif; ?>
 
@@ -188,7 +188,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['update_id'])) {
                                     <i class="fas fa-comment-slash"></i>
                                 </button>
                             <?php elseif($req['status'] == 'approved'): ?>
-                                <a href="generate_letter.php?id=<?php echo $req['id']; ?>" target="_blank" class="btn-download" title="Download Letter">
+                                <a href="<?php echo BASE_URL; ?>api/generate_letter.php?id=<?php echo $req['id']; ?>" target="_blank" class="btn-download" title="Download Letter">
                                     <i class="fas fa-file-pdf"></i>
                                 </a>
                             <?php endif; ?>

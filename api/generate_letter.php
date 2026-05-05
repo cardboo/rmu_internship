@@ -1,8 +1,8 @@
 <?php
-require 'db.php';
+require __DIR__ . '/../includes/db.php';
 
-// 1. Path Debugger for FPDF
-$fpdf_path = 'libs/fpdf.php';
+// 1. FPDF library (vendored at lib/fpdf.php)
+$fpdf_path = __DIR__ . '/../lib/fpdf.php';
 if (!file_exists($fpdf_path)) {
     die("<b>Library Error:</b> FPDF not found at " . htmlspecialchars($fpdf_path));
 }
@@ -10,7 +10,7 @@ require $fpdf_path;
 
 // 2. Security Check
 if (!isset($_SESSION['user_id'])) {
-    header("Location: index.php");
+    header("Location: " . BASE_URL . "index.php");
     exit;
 }
 
@@ -101,7 +101,7 @@ $pdf->Ln(10);
 
 // --- Signature Block (Path & Overlap Fixed) ---
 // Define the folder where signatures are kept
-$sig_directory = 'images/signatures/'; 
+$sig_directory = __DIR__ . '/../assets/images/signatures/';
 $full_sig_path = $sig_directory . $data['signature_path'];
 
 if (!empty($data['signature_path']) && file_exists($full_sig_path)) {

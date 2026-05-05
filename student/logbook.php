@@ -1,9 +1,9 @@
 <?php
 if (session_status() === PHP_SESSION_NONE) { session_start(); }
-require 'db.php';
+require __DIR__ . '/../includes/db.php';
 
 if (!isset($_SESSION['user_id']) || $_SESSION['role'] != 'student') {
-    header("Location: index.php");
+    header("Location: " . BASE_URL . "index.php");
     exit;
 }
 
@@ -52,7 +52,7 @@ $logs = $stmt->fetchAll();
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Weekly Logbook | RMU</title>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-    <link rel="stylesheet" href="css/style.css">
+    <link rel="stylesheet" href="<?php echo asset('css/style.css'); ?>">
     <style>
         .log-card { background: white; padding: 20px; border-radius: 10px; margin-bottom: 20px; border-left: 5px solid var(--primary, #0D8ABC); box-shadow: 0 2px 4px rgba(0,0,0,0.05); }
         .proof-link { display: inline-block; margin-top: 10px; color: var(--primary, #0D8ABC); font-weight: 600; text-decoration: none; padding: 5px 10px; background: #f0f4ff; border-radius: 5px; transition: 0.3s; }
@@ -62,7 +62,7 @@ $logs = $stmt->fetchAll();
 </head>
 <body>
     
-    <?php include 'sidebar.php'; ?>
+    <?php include __DIR__ . '/../includes/sidebar.php'; ?>
 
     <div class="main-content">
         

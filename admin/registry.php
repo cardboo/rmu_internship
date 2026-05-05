@@ -1,11 +1,11 @@
 <?php
-require 'db.php';
+require __DIR__ . '/../includes/db.php';
 
 // ----------------------------------------------------------------------
 // Access control: admin only
 // ----------------------------------------------------------------------
 if (!isset($_SESSION['user_id']) || $_SESSION['role'] !== 'admin') {
-    header("Location: index.php");
+    header("Location: " . BASE_URL . "index.php");
     exit;
 }
 
@@ -257,11 +257,11 @@ foreach ($programs as $p) {
     <meta charset="UTF-8">
     <title>Student Registry | Admin</title>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-    <link rel="stylesheet" href="css/style.css">
-    <link rel="stylesheet" href="css/registry.css">
+    <link rel="stylesheet" href="<?php echo asset('css/style.css'); ?>">
+    <link rel="stylesheet" href="<?php echo asset('css/registry.css'); ?>">
 </head>
 <body>
-<?php include 'sidebar.php'; ?>
+<?php include __DIR__ . '/../includes/sidebar.php'; ?>
 
 <div class="main-content">
     <div class="header-panel">
@@ -311,7 +311,7 @@ foreach ($programs as $p) {
                 </label>
 
                 <div class="form-actions">
-                    <a href="download_registry_template.php" class="btn btn-ghost">
+                    <a href="<?php echo BASE_URL; ?>api/download_registry_template.php" class="btn btn-ghost">
                         <i class="fas fa-download"></i>&nbsp; Download Template
                     </a>
                     <button type="submit" name="upload_csv" class="btn btn-primary">
@@ -429,7 +429,7 @@ foreach ($programs as $p) {
                     <i class="fas fa-search"></i>
                 </button>
                 <?php if ($q !== ''): ?>
-                    <a class="btn btn-ghost" href="admin_registry.php">Clear</a>
+                    <a class="btn btn-ghost" href="registry.php">Clear</a>
                 <?php endif; ?>
             </form>
         </div>

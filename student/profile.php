@@ -26,8 +26,8 @@ $user = $stmt->fetch();
 // Helper for Profile Image URL
 $displayName = urlencode($user['full_name']);
 $defaultAvatar = "https://ui-avatars.com/api/?name=$displayName&background=0D8ABC&color=fff";
-$currentPhoto = (!empty($user['profile_path']) && file_exists($PROFILE_DIR . $user['profile_path']))
-                ? asset('images/profiles/' . $user['profile_path'])
+$currentPhoto = (!empty($user['profile_pic']) && file_exists($PROFILE_DIR . $user['profile_pic']))
+                ? asset('images/profiles/' . $user['profile_pic'])
                 : $defaultAvatar;
 
 // 2. Handle Profile Picture Upload
@@ -45,16 +45,17 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_FILES['profile_pix'])) {
 
         if (move_uploaded_file($file['tmp_name'], $path)) {
             // Delete old pic if exists and it's not empty
-            if (!empty($user['profile_path']) && file_exists($folder . $user['profile_path'])) {
-                unlink($folder . $user['profile_path']);
+            if (!empty($user['profile_pic']) && file_exists($folder . $user['profile_pic'])) {
+                unlink($folder . $user['profile_pic']);
             }
 
-            $pdo->prepare("UPDATE users SET profile_path = ? WHERE id = ?")->execute([$new_name, $user_id]);
+            $pdo->prepare("UPDATE users SET profile_pic = ? WHERE id = ?")->execute([$new_name, $user_id]);
             $message = "Profile picture updated successfully!";
 
-            // Refresh local data to show new image immediately
-            $user['profile_path'] = $new_name;
-            $currentPhoto = asset('images/profiles/' . $new_name);
+            // Refresh local data + session so the sidebar shows the new image immediately
+            $user['profile_pic']     = $new_name;
+            $_SESSION['profile_pic'] = $new_name;
+            $currentPhoto            = asset('images/profiles/' . $new_name);
         }
     } else {
         $error = "Invalid file type. Please use PNG or JPG.";

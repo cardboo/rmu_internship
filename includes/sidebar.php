@@ -15,6 +15,9 @@ $role = $_SESSION['role'];
 
 $display_name     = $_SESSION['name'] ?? 'User';
 $profile_filename = $_SESSION['profile_pic'] ?? '';
+// The seed dump set every user's profile_pic to the literal 'default.png'
+// even though no such file exists. Treat it as no avatar.
+if ($profile_filename === 'default.png') $profile_filename = '';
 $user_image       = !empty($profile_filename)
     ? asset('images/profiles/' . $profile_filename)
     : asset('images/logo.jpg');

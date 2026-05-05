@@ -22,10 +22,16 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
         session_regenerate_id(true);
 
         $_SESSION['user_id'] = $user['id'];
-        $_SESSION['role'] = $user['role'];
-        $_SESSION['name'] = $user['full_name'];
-        $_SESSION['dept'] = $user['department'];
-        $_SESSION['profile_pic'] = $user['profile_path'];
+        $_SESSION['role']    = $user['role'];
+        $_SESSION['name']    = $user['full_name'];
+        $_SESSION['dept']    = $user['department'];
+
+        // Avatar: prefer the canonical profile_pic column, fall back to
+        // the legacy profile_path. The seed sentinel 'default.png' is
+        // treated as no avatar (the file doesn't actually exist).
+        $avatar = $user['profile_pic'] ?? $user['profile_path'] ?? null;
+        if ($avatar === '' || $avatar === 'default.png') $avatar = null;
+        $_SESSION['profile_pic'] = $avatar;
 
         // 4. Role-Based Redirection
         switch ($user['role']) {

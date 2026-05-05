@@ -20,15 +20,17 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['submit_log'])) {
 
     // Handle File Upload - Better Folder Organization
     if (isset($_FILES['proof_file']) && $_FILES['proof_file']['error'] == 0) {
-        $target_dir = "uploads/logbooks/"; 
-        if (!is_dir($target_dir)) mkdir($target_dir, 0777, true);
-        
+        // Filesystem dir is anchored to the project root via __DIR__.
+        $logbook_dir = __DIR__ . '/../uploads/logbooks/';
+        if (!is_dir($logbook_dir)) mkdir($logbook_dir, 0777, true);
+
         $file_ext = pathinfo($_FILES['proof_file']['name'], PATHINFO_EXTENSION);
         $new_filename = "log_" . $student_id . "_w" . $week . "_" . time() . "." . $file_ext;
-        $target_file = $target_dir . $new_filename;
+        $target_file = $logbook_dir . $new_filename;
 
         if (move_uploaded_file($_FILES['proof_file']['tmp_name'], $target_file)) {
-            $file_path = $target_file;
+            // DB stores the project-root-relative path so view links can prefix BASE_URL.
+            $file_path = 'uploads/logbooks/' . $new_filename;
         }
     }
 
@@ -129,7 +131,7 @@ $logs = $stmt->fetchAll();
                         </strong>
                         
                         <?php if($log['file_path']): ?>
-                            <a href="<?php echo htmlspecialchars($log['file_path']); ?>" target="_blank" class="proof-link">
+                            <a href="<?php echo BASE_URL . htmlspecialchars($log['file_path']); ?>" target="_blank" class="proof-link">
                                 <i class="fas fa-paperclip"></i> View Proof
                             </a>
                         <?php endif; ?>

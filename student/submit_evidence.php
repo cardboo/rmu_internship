@@ -2,20 +2,25 @@
 if (session_status() === PHP_SESSION_NONE) { session_start(); }
 require __DIR__ . '/../includes/db.php';
 
-$success = ""; 
+if (!isset($_SESSION['user_id']) || $_SESSION['role'] != 'student') {
+    header("Location: " . BASE_URL . "index.php");
+    exit;
+}
+
+$success = "";
 
 if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_FILES['performance_sheet'])) {
-    $target_dir = "uploads/evidence/";
-    if (!is_dir($target_dir)) { mkdir($target_dir, 0777, true); }
+    $evidence_dir = __DIR__ . '/../uploads/evidence/';
+    if (!is_dir($evidence_dir)) { mkdir($evidence_dir, 0777, true); }
 
-    // Only handling the performance sheet now
-    $perf_file = $target_dir . time() . "_perf_" . basename($_FILES["performance_sheet"]["name"]);
+    $filename       = time() . "_perf_" . basename($_FILES["performance_sheet"]["name"]);
+    $absolute_path  = $evidence_dir . $filename;
+    $relative_path  = 'uploads/evidence/' . $filename;
 
-    if (move_uploaded_file($_FILES["performance_sheet"]["tmp_name"], $perf_file)) {
-        
-        // Updated SQL to only insert the performance scan
+    if (move_uploaded_file($_FILES["performance_sheet"]["tmp_name"], $absolute_path)) {
+        // DB stores the project-root-relative path so view links can prefix BASE_URL.
         $stmt = $pdo->prepare("INSERT INTO internship_submissions (user_id, performance_scan) VALUES (?, ?)");
-        $stmt->execute([$_SESSION['user_id'], $perf_file]);
+        $stmt->execute([$_SESSION['user_id'], $relative_path]);
         $success = "Performance sheet uploaded successfully! Awaiting faculty review.";
     }
 }

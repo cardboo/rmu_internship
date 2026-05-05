@@ -1,6 +1,20 @@
 # Uploaded user content (kept in production, not in git)
 uploads/*
 !uploads/.gitkeep
+!uploads/logbooks/
+!uploads/evidence/
+uploads/logbooks/*
+uploads/evidence/*
+!uploads/logbooks/.gitkeep
+!uploads/evidence/.gitkeep
+
+# Archives — never commit (extract before adding to repo)
+*.rar
+*.zip
+*.7z
+*.tar
+*.tar.gz
+*.tgz
 
 # Local config overrides
 config.local.php

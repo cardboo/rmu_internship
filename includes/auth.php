@@ -74,6 +74,55 @@ function require_role(string ...$roles): void {
 }
 
 /**
+ * Fetch the current academic year row + its semesters.
+ *
+ * Returns:
+ *   ['id' => int, 'name' => string, 'start_date' => 'Y-m-d',
+ *    'end_date' => 'Y-m-d', 'semesters' => [['label' => ..., ...]]]
+ *   or null if no year is marked current (e.g. fresh install).
+ *
+ * Cached for the request lifetime.
+ */
+function current_academic_year(PDO $pdo): ?array {
+    static $cache = false;
+    if ($cache !== false) return $cache;
+
+    try {
+        $year = $pdo->query("SELECT * FROM academic_years WHERE is_current = 1 LIMIT 1")
+                    ->fetch(PDO::FETCH_ASSOC);
+    } catch (PDOException $e) {
+        // Migration 007 hasn't been run yet — fail soft.
+        $cache = null;
+        return null;
+    }
+    if (!$year) {
+        $cache = null;
+        return null;
+    }
+    $sStmt = $pdo->prepare("SELECT * FROM semesters WHERE academic_year_id = ? ORDER BY sort_order, start_date");
+    $sStmt->execute([$year['id']]);
+    $year['semesters'] = $sStmt->fetchAll(PDO::FETCH_ASSOC);
+
+    $cache = $year;
+    return $year;
+}
+
+/**
+ * Given a date (Y-m-d), find which semester of the current
+ * academic year it falls within. Returns the semester row or null.
+ */
+function semester_for_date(PDO $pdo, string $date): ?array {
+    $year = current_academic_year($pdo);
+    if (!$year) return null;
+    foreach ($year['semesters'] as $s) {
+        if ($date >= $s['start_date'] && $date <= $s['end_date']) {
+            return $s;
+        }
+    }
+    return null;
+}
+
+/**
  * If the current user is flagged must_change_password=1, force-redirect
  * them to change_password.php until they comply. Pages that need to
  * bypass this (the change_password page itself, logout) can declare

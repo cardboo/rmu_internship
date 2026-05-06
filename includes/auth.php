@@ -10,7 +10,7 @@
 // Allowed RMU email domains
 // ----------------------------------------------------------------------
 const RMU_STAFF_DOMAIN   = 'rmu.edu.gh';
-const RMU_STUDENT_DOMAIN = 'st.edu.rmu.gh';
+const RMU_STUDENT_DOMAIN = 'st.rmu.edu.gh';
 
 /**
  * Validate an email belongs to RMU. Optionally enforce role-domain pairing:

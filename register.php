@@ -172,6 +172,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     // Live registry lookup hint as the index is typed (debounced).
     const BASE_URL = <?php echo json_encode(BASE_URL); ?>;
     const idxIn    = document.querySelector('input[name="index_number"]');
+    const emailIn  = document.querySelector('input[name="email"]');
     const hint     = document.getElementById('lookup_hint');
     let timer;
 
@@ -192,6 +193,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 if (j.ok) {
                     hint.textContent = '✓ Found: ' + j.data.full_name + ' — ' + j.data.dept_name;
                     hint.style.color = '#166534';
+                    // If the registry has an email on file and the user hasn't typed
+                    // one yet, pre-fill it so they don't have to.
+                    if (j.data.email && !emailIn.value) emailIn.value = j.data.email;
                 } else {
                     hint.textContent = '⚠ ' + j.error;
                     hint.style.color = '#991b1b';

@@ -40,7 +40,7 @@ if (!$public) {
 }
 
 $stmt = $pdo->prepare("
-    SELECT r.index_number, r.full_name, r.level, r.gender,
+    SELECT r.index_number, r.full_name, r.email, r.level, r.gender,
            r.date_of_birth, r.year_admitted, r.is_claimed,
            d.name AS dept_name, p.name AS program_name
     FROM student_registry r

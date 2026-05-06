@@ -167,8 +167,9 @@ if (($_GET['msg'] ?? '') === 'created') {
             <div class="grid-2">
                 <div class="field">
                     <label>Email <span class="req">*</span></label>
-                    <input type="email" name="email" required placeholder="e.g. j.doe@st.edu.rmu.gh">
-                    <small class="muted small">Must end in <code>@<?php echo RMU_STUDENT_DOMAIN; ?></code></small>
+                    <input type="email" name="email" id="form_email" required
+                           placeholder="e.g. j.doe@<?php echo RMU_STUDENT_DOMAIN; ?>">
+                    <small class="muted small">Must end in <code>@<?php echo RMU_STUDENT_DOMAIN; ?></code>. Pre-filled if the registry has one on file.</small>
                 </div>
                 <div class="field">
                     <label>Temporary Password <span class="req">*</span></label>
@@ -223,6 +224,9 @@ async function doLookup() {
             return;
         }
         const d = j.data;
+        const emailRow = d.email
+            ? `<span class="muted small">Email</span> <strong>${escapeHtml(d.email)}</strong>`
+            : `<span class="muted small">Email</span> <em class="muted">— not on file —</em>`;
         lookupRes.innerHTML = `
             <div class="banner banner-success" style="margin-top:14px;">
                 <i class="fas fa-check-circle"></i>&nbsp; Found in registry — review the details below and continue to step 2.
@@ -231,6 +235,7 @@ async function doLookup() {
                 <div class="grid-2" style="gap: 4px 14px;">
                     <span class="muted small">Name</span>      <strong>${escapeHtml(d.full_name)}</strong>
                     <span class="muted small">Index #</span>   <code>${escapeHtml(d.index_number)}</code>
+                    ${emailRow}
                     <span class="muted small">Department</span><strong>${escapeHtml(d.dept_name)}</strong>
                     <span class="muted small">Program</span>   <strong>${escapeHtml(d.program_name)}</strong>
                     <span class="muted small">Level</span>     <span>${escapeHtml(d.level || '—')}</span>
@@ -239,6 +244,9 @@ async function doLookup() {
             </div>
         `;
         formIdx.value = d.index_number;
+        // Pre-fill the email field if the registry has one (secretary can edit).
+        const emailInput = document.getElementById('form_email');
+        if (d.email && !emailInput.value) emailInput.value = d.email;
         formCard.style.display = '';
     } catch (e) {
         lookupRes.innerHTML = `<div class="banner banner-error" style="margin-top:14px;">

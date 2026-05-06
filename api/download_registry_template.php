@@ -16,6 +16,7 @@ $out = fopen('php://output', 'w');
 fputcsv($out, [
     'index_number',
     'full_name',
+    'email',
     'department',
     'program',
     'level',
@@ -28,6 +29,7 @@ fputcsv($out, [
 fputcsv($out, [
     'BIT0002001',
     'Kwame Mensah',
+    'k.mensah@st.rmu.edu.gh',
     'ICT',
     'BSc. Information Technology',
     '300',
@@ -38,6 +40,7 @@ fputcsv($out, [
 fputcsv($out, [
     'BME0002006',
     'Ama Serwaa',
+    'a.serwaa@st.rmu.edu.gh',
     'Marine Engineering',
     'BSc. Marine Engineering',
     '200',

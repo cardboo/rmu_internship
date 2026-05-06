@@ -45,6 +45,24 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['submit_request'])) {
 $stmt = $pdo->prepare("SELECT * FROM requests WHERE student_id = ? ORDER BY request_date DESC");
 $stmt->execute([$student_id]);
 $my_requests = $stmt->fetchAll();
+
+// Fetch current placement (if any) for current academic year.
+$cur_year_db = current_academic_year($pdo);
+$placement = null;
+$pStmt = $pdo->prepare("
+    SELECT * FROM placements
+    WHERE student_id = ?
+    " . ($cur_year_db ? " AND academic_year_id = " . (int)$cur_year_db['id'] : "") . "
+    ORDER BY created_at DESC LIMIT 1
+");
+$pStmt->execute([$student_id]);
+$placement = $pStmt->fetch(PDO::FETCH_ASSOC) ?: null;
+
+// Has the student got an approved letter without a placement yet?
+$has_approved_letter = false;
+foreach ($my_requests as $r) {
+    if ($r['status'] === 'approved') { $has_approved_letter = true; break; }
+}
 ?>
 
 <!DOCTYPE html>
@@ -55,6 +73,7 @@ $my_requests = $stmt->fetchAll();
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <link rel="stylesheet" href="<?php echo asset('css/style.css'); ?>">
     <link rel="stylesheet" href="<?php echo asset('css/layout.css'); ?>">
+    <link rel="stylesheet" href="<?php echo asset('css/student.css'); ?>">
     <style>
         .form-card { background: white; padding: 25px; border-radius: 12px; margin-bottom: 30px; box-shadow: 0 4px 6px rgba(0,0,0,0.05); }
         .toggle-container { display: flex; align-items: center; margin-bottom: 20px; background: #f1f5f9; padding: 10px; border-radius: 8px; }
@@ -147,6 +166,56 @@ $my_requests = $stmt->fetchAll();
                     <?php endforeach; ?>
                 </tbody>
             </table>
+        </div>
+
+        <div class="placement-card <?php echo $placement ? 'has-placement' : 'no-placement'; ?>">
+            <div class="placement-card-head">
+                <h2><i class="fas fa-building"></i>&nbsp; My Placement</h2>
+                <?php if ($placement): ?>
+                    <span class="status-badge approved">Active</span>
+                <?php elseif ($has_approved_letter): ?>
+                    <span class="status-badge pending">Awaiting registration</span>
+                <?php else: ?>
+                    <span class="status-badge" style="background:#e2e8f0;color:#475569;">Not started</span>
+                <?php endif; ?>
+            </div>
+
+            <?php if ($placement): ?>
+                <div class="placement-grid">
+                    <div>
+                        <div class="muted small">Company</div>
+                        <strong><?php echo htmlspecialchars($placement['company_name']); ?></strong>
+                    </div>
+                    <div>
+                        <div class="muted small">Period</div>
+                        <strong>
+                            <?php echo htmlspecialchars(date('d M Y', strtotime($placement['start_date']))); ?>
+                            – <?php echo htmlspecialchars(date('d M Y', strtotime($placement['end_date']))); ?>
+                        </strong>
+                    </div>
+                    <div>
+                        <div class="muted small">On-the-job Supervisor</div>
+                        <strong><?php echo htmlspecialchars($placement['supervisor_name']); ?></strong>
+                        <span class="muted small">&middot; <?php echo htmlspecialchars($placement['supervisor_email']); ?></span>
+                    </div>
+                    <div>
+                        <div class="muted small">Department / Office</div>
+                        <strong><?php echo htmlspecialchars($placement['company_department'] ?? '—'); ?></strong>
+                    </div>
+                </div>
+                <div style="margin-top: 14px;">
+                    <a href="<?php echo BASE_URL; ?>student/placement.php" class="btn btn-ghost">
+                        <i class="fas fa-edit"></i>&nbsp; Edit placement
+                    </a>
+                </div>
+            <?php elseif ($has_approved_letter): ?>
+                <p>Your attachment letter is approved. Once you've secured a host organisation, register the placement so your weekly logs and final evaluation can attach to it.</p>
+                <a href="<?php echo BASE_URL; ?>student/placement.php" class="btn btn-primary">
+                    <i class="fas fa-plus-circle"></i>&nbsp; Register Placement
+                </a>
+            <?php else: ?>
+                <p class="muted">Submit a letter request above and wait for HOD approval. Once approved, you'll be able to register your placement here.</p>
+            <?php endif; ?>
         </div>
     </div>
 

@@ -105,14 +105,11 @@ if (!function_exists('nav_active')) {
 
         <?php if ($role === 'student'): ?>
             <div class="nav-section">MY INTERNSHIP</div>
-            <a href="<?php echo url('student/docs.php'); ?>" class="<?php echo nav_active('student/docs.php', $current_path); ?>">
-                <i class="fas fa-folder-open"></i>&nbsp;&nbsp;Documents
+            <a href="<?php echo url('student/placement.php'); ?>" class="<?php echo nav_active('student/placement.php', $current_path); ?>">
+                <i class="fas fa-building"></i>&nbsp;&nbsp;My Placement
             </a>
             <a href="<?php echo url('student/logbook.php'); ?>" class="<?php echo nav_active('student/logbook.php', $current_path); ?>">
-                <i class="fas fa-book"></i>&nbsp;&nbsp;My Logbook
-            </a>
-            <a href="<?php echo url('student/submit_evidence.php'); ?>" class="<?php echo nav_active('student/submit_evidence.php', $current_path); ?>">
-                <i class="fas fa-file-upload"></i>&nbsp;&nbsp;Submit Evidence
+                <i class="fas fa-book"></i>&nbsp;&nbsp;Weekly Logbook
             </a>
         <?php endif; ?>
 

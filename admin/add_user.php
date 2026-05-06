@@ -1,200 +1,293 @@
 <?php
 require __DIR__ . '/../includes/db.php';
+require_role('admin');
 
-// Security Check
-if (!isset($_SESSION['user_id']) || $_SESSION['role'] != 'admin') {
-    header("Location: " . BASE_URL . "index.php");
-    exit;
-}
+$flash    = ['type' => '', 'msg' => ''];
+$preserve = [];
 
-$message = "";
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['add_user'])) {
+    $full_name    = trim($_POST['full_name']    ?? '');
+    $email        = trim($_POST['email']        ?? '');
+    $role         = trim($_POST['role']         ?? '');
+    $department   = trim($_POST['department']   ?? '');
+    $program      = trim($_POST['program']      ?? '');
+    $level        = trim($_POST['level']        ?? '');
+    $gender       = trim($_POST['gender']       ?? '');
+    $job_title    = trim($_POST['job_title']    ?? '');
+    $index_number = strtoupper(trim($_POST['index_number'] ?? ''));
+    $password     = (string)($_POST['password'] ?? '');
 
-// Handle User Deletion
-if (isset($_GET['delete_id'])) {
-    $del_id = $_GET['delete_id'];
-    
-    // Prevent admin from deleting themselves
-    if ($del_id != $_SESSION['user_id']) {
-        $stmt = $pdo->prepare("DELETE FROM users WHERE id = ?");
-        if ($stmt->execute([$del_id])) {
-            $message = "<div class='success-banner'>User deleted successfully!</div>";
+    $err = null;
+    if ($full_name === '' || $email === '' || $role === '' || $department === '' || $password === '') {
+        $err = 'Full name, email, role, department and password are required.';
+    } elseif (!in_array($role, ['admin','hod','secretary','student'], true)) {
+        $err = 'Invalid role.';
+    } elseif (($emailErr = rmu_email_error($email, $role)) !== null) {
+        $err = $emailErr;
+    } elseif (strlen($password) < 8) {
+        $err = 'Password must be at least 8 characters.';
+    } elseif ($role === 'student' && $program === '') {
+        $err = 'Program of study is required for students.';
+    }
+
+    if (!$err) {
+        $check = $pdo->prepare("SELECT 1 FROM users WHERE email = ? LIMIT 1");
+        $check->execute([$email]);
+        if ($check->fetchColumn()) {
+            $err = "A user with email $email already exists.";
         }
+    }
+
+    if ($err) {
+        $flash    = ['type' => 'error', 'msg' => $err];
+        $preserve = compact('full_name','email','role','department','program','level','gender','job_title','index_number');
     } else {
-        $message = "<div class='error-banner'>You cannot delete your own admin account.</div>";
+        $hash = password_hash($password, PASSWORD_DEFAULT);
+        $stmt = $pdo->prepare("
+            INSERT INTO users
+                (full_name, email, password, role, department, level, program,
+                 job_title, gender, index_number, must_change_password)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)
+        ");
+        $stmt->execute([
+            $full_name, $email, $hash, $role, $department,
+            $role === 'student' ? ($level ?: null) : null,
+            $role === 'student' ? ($program ?: null) : null,
+            $role !== 'student' ? ($job_title ?: null) : null,
+            $gender !== '' ? $gender : null,
+            $role === 'student' && $index_number !== '' ? $index_number : null,
+        ]);
+
+        // Stash the temp password so users.php can show it once.
+        $_SESSION['temp_pw_notice'] = ['name' => $full_name, 'password' => $password];
+        header("Location: users.php?msg=created");
+        exit;
     }
 }
 
-// Handle Add New User
-if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['add_user'])) {
-    $name = $_POST['full_name'];
-    $email = $_POST['email'];
-    $role = $_POST['role'];
-    $department = $_POST['department'];
-    $password = password_hash($_POST['password'], PASSWORD_DEFAULT);
-    
-    $level = ($role == 'student') ? $_POST['level'] : null;
-    $program = ($role == 'student') ? $_POST['program'] : null;
-    $job_title = ($role != 'student') ? $_POST['job_title'] : null;
+$default_pw = generate_temp_password();
 
-    // Check if email already exists
-    $check = $pdo->prepare("SELECT id FROM users WHERE email = ?");
-    $check->execute([$email]);
-    if ($check->rowCount() > 0) {
-        $message = "<div class='error-banner'>Error: A user with this email already exists.</div>";
-    } else {
-        $stmt = $pdo->prepare("INSERT INTO users (full_name, email, password, role, department, level, program, job_title) VALUES (?, ?, ?, ?, ?, ?, ?, ?)");
-        if ($stmt->execute([$name, $email, $password, $role, $department, $level, $program, $job_title])) {
-            $message = "<div class='success-banner'>New $role added successfully!</div>";
-        } else {
-            $message = "<div class='error-banner'>Error adding user.</div>";
-        }
-    }
+$departments = $pdo->query("SELECT id, name FROM departments ORDER BY name")->fetchAll(PDO::FETCH_ASSOC);
+$programs    = $pdo->query("SELECT id, department_id, name FROM programs ORDER BY name")->fetchAll(PDO::FETCH_ASSOC);
+$job_titles  = $pdo->query("SELECT id, name FROM job_titles ORDER BY name")->fetchAll(PDO::FETCH_ASSOC);
+
+$prog_by_dept_name = [];
+$dept_by_id        = [];
+foreach ($departments as $d) {
+    $prog_by_dept_name[$d['name']] = [];
+    $dept_by_id[$d['id']]          = $d['name'];
+}
+foreach ($programs as $p) {
+    $name = $dept_by_id[$p['department_id']] ?? null;
+    if ($name !== null) $prog_by_dept_name[$name][] = $p['name'];
 }
 
-// Fetch all users except the current admin
-$stmt = $pdo->prepare("SELECT * FROM users WHERE id != ? ORDER BY role ASC, full_name ASC");
-$stmt->execute([$_SESSION['user_id']]);
-$users = $stmt->fetchAll();
+$STAFF_DOMAIN   = RMU_STAFF_DOMAIN;
+$STUDENT_DOMAIN = RMU_STUDENT_DOMAIN;
 ?>
-
 <!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>Manage Users | Admin Portal</title>
+    <title>Add New User | Admin</title>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <link rel="stylesheet" href="<?php echo asset('css/style.css'); ?>">
     <link rel="stylesheet" href="<?php echo asset('css/layout.css'); ?>">
-    <style>
-        .form-card { background: white; padding: 25px; border-radius: 12px; margin-bottom: 30px; box-shadow: 0 4px 6px rgba(0,0,0,0.05); }
-        .input-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
-        .success-banner { background: #dcfce7; color: #166534; padding: 15px; border-radius: 8px; margin-bottom: 20px; font-weight: bold; }
-        .error-banner { background: #fee2e2; color: #991b1b; padding: 15px; border-radius: 8px; margin-bottom: 20px; font-weight: bold; }
-        .hidden { display: none; }
-        .btn-delete { color: #dc2626; cursor: pointer; text-decoration: none; font-weight: bold; }
-        .btn-delete:hover { text-decoration: underline; }
-        .role-badge { padding: 4px 10px; border-radius: 20px; font-size: 0.8rem; font-weight: 600; text-transform: uppercase; }
-        .role-student { background: #e0f2fe; color: #0369a1; }
-        .role-hod { background: #fef3c7; color: #92400e; }
-        .role-secretary { background: #f3e8ff; color: #7e22ce; }
-        .role-admin { background: #fee2e2; color: #991b1b; }
-    </style>
+    <link rel="stylesheet" href="<?php echo asset('css/registry.css'); ?>">
+    <link rel="stylesheet" href="<?php echo asset('css/users.css'); ?>">
 </head>
 <body>
-    <?php include __DIR__ . '/../includes/sidebar.php'; ?>
+<?php include __DIR__ . '/../includes/sidebar.php'; ?>
 
-    <div class="main-content">
-        <h1>User Management</h1>
-        
-        <?php echo $message; ?>
-
-        <div class="form-card">
-            <h3 style="margin-bottom: 20px; border-bottom: 2px solid #0D8ABC; padding-bottom: 10px;">Add New User</h3>
-            <form action="" method="POST">
-                <div class="input-grid" style="margin-bottom: 15px;">
-                    <div>
-                        <label>Full Name</label>
-                        <input type="text" name="full_name" required class="input-field">
-                    </div>
-                    <div>
-                        <label>Email Address</label>
-                        <input type="email" name="email" required class="input-field">
-                    </div>
-                </div>
-
-                <div class="input-grid" style="margin-bottom: 15px;">
-                    <div>
-                        <label>Role</label>
-                        <select name="role" id="role_select" class="input-field" required onchange="toggleFields()">
-                            <option value="student">Student</option>
-                            <option value="secretary">Department Secretary</option>
-                            <option value="hod">Head of Department (HOD)</option>
-                            <option value="admin">System Admin</option>
-                        </select>
-                    </div>
-                    <div>
-                        <label>Department</label>
-                        <input type="text" name="department" placeholder="e.g. Nautical Science" required class="input-field">
-                    </div>
-                </div>
-
-                <div id="student_fields" class="input-grid" style="margin-bottom: 15px;">
-                    <div>
-                        <label>Level</label>
-                        <select name="level" class="input-field">
-                            <option value="100">Level 100</option>
-                            <option value="200">Level 200</option>
-                            <option value="300">Level 300</option>
-                            <option value="400">Level 400</option>
-                        </select>
-                    </div>
-                    <div>
-                        <label>Program of Study</label>
-                        <input type="text" name="program" placeholder="e.g. BSc. Nautical Science" class="input-field">
-                    </div>
-                </div>
-
-                <div id="staff_fields" class="hidden" style="margin-bottom: 15px;">
-                    <label>Job Title (For Staff)</label>
-                    <input type="text" name="job_title" placeholder="e.g. Senior Lecturer" class="input-field" style="width: 100%;">
-                </div>
-
-                <div style="margin-bottom: 20px;">
-                    <label>Temporary Password</label>
-                    <input type="password" name="password" required class="input-field" style="width: 100%;">
-                </div>
-
-                <button type="submit" name="add_user" class="btn-login" style="width: 200px; background: #0D8ABC; color: white; border: none; padding: 12px; border-radius: 6px; cursor: pointer;">
-                    <i class="fas fa-plus-circle"></i> Create User
-                </button>
-            </form>
+<div class="main-content">
+    <div class="header-panel">
+        <div>
+            <h1>Add New User</h1>
+            <p>Create an RMU portal account. The user will be forced to change the temporary password on first login.</p>
         </div>
-
-        <div class="table-container">
-            <h2>System Users</h2>
-            <table>
-                <thead>
-                    <tr>
-                        <th>Name</th>
-                        <th>Email</th>
-                        <th>Department</th>
-                        <th>Role</th>
-                        <th>Action</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    <?php foreach($users as $u): ?>
-                    <tr>
-                        <td style="font-weight: 500;"><?php echo htmlspecialchars($u['full_name']); ?></td>
-                        <td><?php echo htmlspecialchars($u['email']); ?></td>
-                        <td><?php echo htmlspecialchars($u['department']); ?></td>
-                        <td><span class="role-badge role-<?php echo $u['role']; ?>"><?php echo htmlspecialchars($u['role']); ?></span></td>
-                        <td>
-                            <a href="?delete_id=<?php echo $u['id']; ?>" class="btn-delete" onclick="return confirm('Are you sure you want to delete this user? This action cannot be undone.');">
-                                <i class="fas fa-trash-alt"></i> Delete
-                            </a>
-                        </td>
-                    </tr>
-                    <?php endforeach; ?>
-                </tbody>
-            </table>
-        </div>
+        <a href="users.php" class="btn btn-ghost"><i class="fas fa-arrow-left"></i>&nbsp; Back</a>
     </div>
 
-    <script>
-    function toggleFields() {
-        const role = document.getElementById('role_select').value;
-        const studentFields = document.getElementById('student_fields');
-        const staffFields = document.getElementById('staff_fields');
+    <?php if ($flash['msg']): ?>
+        <div class="banner banner-<?php echo htmlspecialchars($flash['type']); ?>">
+            <i class="fas fa-info-circle"></i> <?php echo htmlspecialchars($flash['msg']); ?>
+        </div>
+    <?php endif; ?>
 
-        if (role === 'student') {
-            studentFields.classList.remove('hidden');
-            staffFields.classList.add('hidden');
-        } else {
-            studentFields.classList.add('hidden');
-            staffFields.classList.remove('hidden');
-        }
+    <div class="card">
+        <form method="POST" class="single-form" id="addUserForm" autocomplete="off">
+            <div class="grid-2">
+                <div class="field">
+                    <label>Full Name <span class="req">*</span></label>
+                    <input type="text" name="full_name" required value="<?php echo htmlspecialchars($preserve['full_name'] ?? ''); ?>">
+                </div>
+                <div class="field">
+                    <label>Role <span class="req">*</span></label>
+                    <select name="role" id="role_select" required>
+                        <option value="">-- Select role --</option>
+                        <?php foreach (['student','secretary','hod','admin'] as $r): ?>
+                            <option value="<?php echo $r; ?>" <?php echo (($preserve['role'] ?? '') === $r) ? 'selected' : ''; ?>>
+                                <?php echo $r === 'hod' ? 'Head of Department (HOD)' : ucfirst($r); ?>
+                            </option>
+                        <?php endforeach; ?>
+                    </select>
+                </div>
+
+                <div class="field">
+                    <label>Email <span class="req">*</span></label>
+                    <input type="email" name="email" required
+                           value="<?php echo htmlspecialchars($preserve['email'] ?? ''); ?>"
+                           placeholder="e.g. john.doe@rmu.edu.gh">
+                    <small class="muted small" id="email_hint">Staff: <code>@<?php echo $STAFF_DOMAIN; ?></code> · Students: <code>@<?php echo $STUDENT_DOMAIN; ?></code></small>
+                </div>
+
+                <div class="field">
+                    <label>Department <span class="req">*</span></label>
+                    <select name="department" id="dept_select" required>
+                        <option value="">-- Select department --</option>
+                        <?php foreach ($departments as $d): ?>
+                            <option value="<?php echo htmlspecialchars($d['name']); ?>"
+                                    <?php echo (($preserve['department'] ?? '') === $d['name']) ? 'selected' : ''; ?>>
+                                <?php echo htmlspecialchars($d['name']); ?>
+                            </option>
+                        <?php endforeach; ?>
+                    </select>
+                </div>
+
+                <!-- STUDENT-ONLY -->
+                <div class="field student-field">
+                    <label>Program <span class="req">*</span></label>
+                    <select name="program" id="prog_select" disabled>
+                        <option value="">-- Select department first --</option>
+                    </select>
+                </div>
+                <div class="field student-field">
+                    <label>Level</label>
+                    <select name="level">
+                        <option value="">--</option>
+                        <?php foreach (['100','200','300','400'] as $l): ?>
+                            <option value="<?php echo $l; ?>" <?php echo (($preserve['level'] ?? '') === $l) ? 'selected' : ''; ?>><?php echo $l; ?></option>
+                        <?php endforeach; ?>
+                    </select>
+                </div>
+                <div class="field student-field">
+                    <label>Index Number</label>
+                    <input type="text" name="index_number"
+                           value="<?php echo htmlspecialchars($preserve['index_number'] ?? ''); ?>"
+                           placeholder="e.g. BIT0002001">
+                </div>
+
+                <!-- STAFF-ONLY -->
+                <div class="field staff-field">
+                    <label>Job Title</label>
+                    <select name="job_title">
+                        <option value="">-- Select --</option>
+                        <?php foreach ($job_titles as $jt): ?>
+                            <option value="<?php echo htmlspecialchars($jt['name']); ?>"
+                                    <?php echo (($preserve['job_title'] ?? '') === $jt['name']) ? 'selected' : ''; ?>>
+                                <?php echo htmlspecialchars($jt['name']); ?>
+                            </option>
+                        <?php endforeach; ?>
+                    </select>
+                </div>
+
+                <div class="field">
+                    <label>Gender</label>
+                    <select name="gender">
+                        <option value="">--</option>
+                        <option value="Male"   <?php echo (($preserve['gender'] ?? '') === 'Male')   ? 'selected' : ''; ?>>Male</option>
+                        <option value="Female" <?php echo (($preserve['gender'] ?? '') === 'Female') ? 'selected' : ''; ?>>Female</option>
+                    </select>
+                </div>
+            </div>
+
+            <div class="field temp-pw-field">
+                <label>Temporary Password <span class="req">*</span></label>
+                <div class="pw-row">
+                    <input type="text" name="password" id="pw_input"
+                           value="<?php echo htmlspecialchars($default_pw); ?>" required minlength="8">
+                    <button type="button" id="regen_btn" class="btn btn-ghost btn-sm" title="Generate a new password">
+                        <i class="fas fa-sync-alt"></i>&nbsp; Generate
+                    </button>
+                </div>
+                <small class="muted small">The user must change this on first login. Save it before submitting — it will be shown once on the user list after creation.</small>
+            </div>
+
+            <div class="form-actions">
+                <a href="users.php" class="btn btn-ghost">Cancel</a>
+                <button type="submit" name="add_user" class="btn btn-primary">
+                    <i class="fas fa-user-plus"></i>&nbsp; Create User
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<script>
+const PROGS_BY_DEPT  = <?php echo json_encode($prog_by_dept_name, JSON_UNESCAPED_UNICODE); ?>;
+const STAFF_DOMAIN   = <?php echo json_encode($STAFF_DOMAIN); ?>;
+const STUDENT_DOMAIN = <?php echo json_encode($STUDENT_DOMAIN); ?>;
+const PRESERVED_PROG = <?php echo json_encode($preserve['program'] ?? ''); ?>;
+
+const roleSel   = document.getElementById('role_select');
+const deptSel   = document.getElementById('dept_select');
+const progSel   = document.getElementById('prog_select');
+const emailHint = document.getElementById('email_hint');
+
+function updateRoleVisibility() {
+    const role = roleSel.value;
+    const isStudent = role === 'student';
+    document.querySelectorAll('.student-field').forEach(el => el.style.display = isStudent ? '' : 'none');
+    document.querySelectorAll('.staff-field').forEach(el  => el.style.display = isStudent ? 'none' : '');
+
+    if (role === 'student') {
+        emailHint.innerHTML = 'Students must use <code>@' + STUDENT_DOMAIN + '</code>';
+    } else if (role) {
+        emailHint.innerHTML = 'Staff must use <code>@' + STAFF_DOMAIN + '</code>';
+    } else {
+        emailHint.innerHTML = 'Staff: <code>@' + STAFF_DOMAIN + '</code> · Students: <code>@' + STUDENT_DOMAIN + '</code>';
     }
-    </script>
+}
+
+function updatePrograms() {
+    const dept = deptSel.value;
+    progSel.innerHTML = '';
+    const list = PROGS_BY_DEPT[dept] || [];
+    if (!dept || list.length === 0) {
+        progSel.disabled = true;
+        progSel.innerHTML = '<option value="">-- Select department first --</option>';
+        return;
+    }
+    progSel.disabled = false;
+    progSel.innerHTML = '<option value="">-- Select program --</option>';
+    list.forEach(name => {
+        const opt = document.createElement('option');
+        opt.value = name;
+        opt.textContent = name;
+        if (name === PRESERVED_PROG) opt.selected = true;
+        progSel.appendChild(opt);
+    });
+}
+
+roleSel.addEventListener('change', updateRoleVisibility);
+deptSel.addEventListener('change', updatePrograms);
+
+document.getElementById('regen_btn').addEventListener('click', () => {
+    // Mirror PHP generate_temp_password() shape: 10 chars, no I/l/O/0/1.
+    const alpha  = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz';
+    const digits = '23456789';
+    let out = '';
+    for (let i = 0; i < 10; i++) {
+        out += (i % 5 < 3)
+            ? alpha[Math.floor(Math.random() * alpha.length)]
+            : digits[Math.floor(Math.random() * digits.length)];
+    }
+    document.getElementById('pw_input').value =
+        out.split('').sort(() => Math.random() - 0.5).join('');
+});
+
+updateRoleVisibility();
+updatePrograms();
+</script>
 </body>
 </html>

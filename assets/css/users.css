@@ -1,0 +1,210 @@
+/* ============================================================
+   Users management pages  (admin/users.php, add_user.php, edit_user.php)
+   Reuses base components from registry.css; only adds the
+   user-list-specific bits.
+   ============================================================ */
+
+/* ---------- Header action button (Add New User in header-panel) ---------- */
+.header-panel .btn-primary {
+    align-self: center;
+    text-decoration: none;
+}
+
+/* ---------- Counts pill row ---------- */
+.counts-row {
+    display: flex;
+    gap: 10px;
+    margin-bottom: 16px;
+}
+.count-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 16px;
+    border-radius: 999px;
+    background: white;
+    border: 1px solid var(--reg-border, #e2e8f0);
+    color: #475569;
+    font-size: 0.88rem;
+    text-decoration: none;
+    transition: 0.15s;
+}
+.count-pill:hover {
+    background: #f1f5f9;
+}
+.count-pill .count-num {
+    background: #f1f5f9;
+    color: #0f172a;
+    padding: 2px 8px;
+    border-radius: 999px;
+    font-weight: 700;
+    font-size: 0.75rem;
+}
+.count-pill.active {
+    background: #0D8ABC;
+    color: white;
+    border-color: #0D8ABC;
+}
+.count-pill.active .count-num {
+    background: rgba(255,255,255,0.25);
+    color: white;
+}
+.count-pill.active.warn {
+    background: #d97706;
+    border-color: #d97706;
+}
+
+/* ---------- Filter bar ---------- */
+.filter-bar {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+    margin-bottom: 18px;
+}
+.filter-input {
+    padding: 9px 12px;
+    border: 1px solid var(--reg-border, #e2e8f0);
+    border-radius: 8px;
+    font-size: 0.9rem;
+    outline: none;
+    background: white;
+}
+.filter-input.wide { flex: 1 1 280px; }
+.filter-input:focus {
+    border-color: #0D8ABC;
+    box-shadow: 0 0 0 3px rgba(13,138,188,0.12);
+}
+
+/* ---------- Users table ---------- */
+.users-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.92rem;
+}
+.users-table thead th {
+    text-align: left;
+    background: #f8fafc;
+    color: #475569;
+    font-weight: 600;
+    font-size: 0.75rem;
+    text-transform: uppercase;
+    letter-spacing: 0.4px;
+    padding: 12px 16px;
+    border-bottom: 1px solid var(--reg-border, #e2e8f0);
+}
+.users-table tbody td {
+    padding: 12px 16px;
+    border-bottom: 1px solid #f1f5f9;
+    vertical-align: middle;
+}
+.users-table tbody tr:last-child td { border-bottom: none; }
+.users-table tbody tr:hover { background: #fafbfc; }
+.users-table tbody tr.row-archived {
+    opacity: 0.55;
+    background: #f8fafc;
+}
+.users-table .actions-col {
+    width: 110px;
+    text-align: right;
+    white-space: nowrap;
+}
+.users-table .muted { color: #64748b; }
+
+/* ---------- Identifier chip ---------- */
+.ident-chip {
+    background: #f1f5f9;
+    color: #0f172a;
+    padding: 3px 9px;
+    border-radius: 6px;
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 0.75rem;
+    font-weight: 600;
+}
+
+/* ---------- Role badges ---------- */
+.role-badge {
+    display: inline-block;
+    padding: 3px 10px;
+    border-radius: 999px;
+    font-size: 0.7rem;
+    font-weight: 700;
+    letter-spacing: 0.4px;
+}
+.role-admin     { background: #fee2e2; color: #991b1b; }
+.role-hod       { background: #fef3c7; color: #92400e; }
+.role-secretary { background: #f3e8ff; color: #7e22ce; }
+.role-student   { background: #e0f2fe; color: #0369a1; }
+.role-archived,
+.role-unknown   { background: #e2e8f0; color: #475569; }
+
+/* ---------- "temp pw" pill on user list ---------- */
+.pill-temp {
+    display: inline-block;
+    margin-left: 8px;
+    padding: 2px 8px;
+    background: #fef3c7;
+    color: #92400e;
+    border-radius: 999px;
+    font-size: 0.65rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.4px;
+}
+
+/* ---------- Temp password banner (after creation) ---------- */
+.temp-pw-banner code {
+    background: white;
+    border: 1px solid #fde68a;
+    padding: 2px 8px;
+    border-radius: 4px;
+    margin-left: 6px;
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-weight: 700;
+    color: #0f172a;
+}
+
+/* ---------- Add/Edit form: password row ---------- */
+.temp-pw-field { margin-top: 8px; }
+.pw-row {
+    display: flex;
+    gap: 8px;
+    align-items: stretch;
+}
+.pw-row input {
+    flex: 1;
+    padding: 10px 12px;
+    border: 1px solid var(--reg-border, #e2e8f0);
+    border-radius: 8px;
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 0.95rem;
+    outline: none;
+}
+.pw-row input:focus {
+    border-color: #0D8ABC;
+    box-shadow: 0 0 0 3px rgba(13,138,188,0.12);
+}
+.pw-row .btn-sm { white-space: nowrap; }
+
+/* ---------- Empty state ---------- */
+.users-table .empty {
+    text-align: center;
+    padding: 60px 20px;
+    color: #94a3b8;
+}
+
+/* ---------- Mobile ---------- */
+@media (max-width: 720px) {
+    .users-table thead { display: none; }
+    .users-table tbody td {
+        display: block;
+        padding: 6px 14px;
+        border-bottom: none;
+    }
+    .users-table tbody tr {
+        display: block;
+        padding: 12px;
+        border-bottom: 1px solid #e2e8f0;
+    }
+    .actions-col { width: auto; text-align: left !important; }
+    .filter-input.wide { flex-basis: 100%; }
+}

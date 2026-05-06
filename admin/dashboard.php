@@ -62,23 +62,7 @@ $requests = $stmtReq->fetchAll();
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <link rel="stylesheet" href="<?php echo asset('css/style.css'); ?>">
     <link rel="stylesheet" href="<?php echo asset('css/layout.css'); ?>">
-    <style>
-        /* Filter Bar Styling */
-        .filter-bar { background: white; padding: 20px; border-radius: 12px; box-shadow: 0 2px 10px rgba(0,0,0,0.05); margin-bottom: 25px; display: flex; gap: 15px; align-items: flex-end; flex-wrap: wrap; }
-        .filter-group { display: flex; flex-direction: column; gap: 5px; }
-        .filter-group label { font-size: 0.8rem; font-weight: 600; color: #64748b; }
-        .filter-input { padding: 8px 12px; border: 1px solid #e2e8f0; border-radius: 6px; outline: none; min-width: 200px; }
-        .btn-filter { background: #0D8ABC; color: white; border: none; padding: 9px 20px; border-radius: 6px; cursor: pointer; font-weight: 600; height: 38px; }
-        .btn-reset { background: #f1f5f9; color: #475569; padding: 9px 15px; border-radius: 6px; text-decoration: none; font-size: 0.9rem; height: 18px; line-height: 18px; }
-        
-        /* Modal and general styles */
-        .modal { display: none; position: fixed; z-index: 1000; left: 0; top: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); }
-        .modal-content { background: white; margin: 10% auto; padding: 25px; width: 450px; border-radius: 12px; }
-        .details-row { display: flex; justify-content: space-between; margin-bottom: 12px; border-bottom: 1px solid #f1f5f9; padding-bottom: 8px; }
-        .details-label { color: #64748b; font-size: 0.85rem; }
-        .details-value { font-weight: 600; color: #1e293b; }
-        .dept-badge { background: #e0f2fe; color: #0369a1; padding: 3px 8px; border-radius: 4px; font-size: 0.75rem; font-weight: 700; }
-    </style>
+    <link rel="stylesheet" href="<?php echo asset('css/dashboards.css'); ?>">
 </head>
 <body>
     <?php include __DIR__ . '/../includes/sidebar.php'; ?>
@@ -155,26 +139,62 @@ $requests = $stmtReq->fetchAll();
 
     <div id="detailsModal" class="modal">
         <div class="modal-content">
-            <h3 style="margin-bottom: 20px; border-bottom: 2px solid #0D8ABC; padding-bottom: 10px;">Master Record</h3>
-            <div id="modalBody"></div>
-            <button onclick="closeModal()" class="btn-login" style="margin-top: 15px; background: #64748b; width: 100%; border:none; color:white; padding:10px; border-radius:6px; cursor:pointer;">Close</button>
+            <div class="modal-header">
+                <h3><i class="fas fa-file-signature"></i>&nbsp; Master Record</h3>
+                <button class="modal-close" onclick="closeModal()" aria-label="Close">&times;</button>
+            </div>
+            <div class="modal-body" id="modalBody"></div>
+            <div class="modal-footer">
+                <button class="btn-action" style="background:#e2e8f0;color:#475569;" onclick="closeModal()">Close</button>
+            </div>
         </div>
     </div>
 
     <script>
+    function escapeHtml(s) {
+        if (s === null || s === undefined) return '—';
+        return String(s).replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;');
+    }
+    function fmtDate(s) {
+        if (!s) return '—';
+        const d = new Date(s);
+        return isNaN(d) ? s : d.toLocaleDateString('en-GB', { day:'numeric', month:'short', year:'numeric' });
+    }
+    function statusBadge(status) {
+        const map = {
+            pending:  ['#fef3c7','#92400e','Pending'],
+            approved: ['#dcfce7','#166534','Approved'],
+            rejected: ['#fee2e2','#991b1b','Rejected']
+        };
+        const [bg,fg,label] = map[status] || ['#e2e8f0','#475569',status];
+        return `<span style="background:${bg};color:${fg};padding:4px 12px;border-radius:999px;font-size:0.75rem;font-weight:700;text-transform:uppercase;letter-spacing:0.4px;">${label}</span>`;
+    }
     function viewDetails(data) {
         document.getElementById('modalBody').innerHTML = `
-            <div class="details-row"><span class="details-label">Full Name:</span> <span class="details-value">${data.full_name}</span></div>
-            <div class="details-row"><span class="details-label">Index Number:</span> <span class="details-value">${data.index_number}</span></div>
-            <div class="details-row"><span class="details-label">Department:</span> <span class="details-value">${data.department}</span></div>
-            <div class="details-row"><span class="details-label">Company:</span> <span class="details-value">${data.company_name}</span></div>
-            <div class="details-row"><span class="details-label">Request Date:</span> <span class="details-value">${data.request_date}</span></div>
-            <div class="details-row"><span class="details-label">Status:</span> <span class="details-value">${data.status}</span></div>
+            <div class="det-status-row">
+                <div>
+                    <div class="student-name">${escapeHtml(data.full_name)}</div>
+                    <div class="student-meta">${escapeHtml(data.department)} &middot; ${escapeHtml(data.index_number)}</div>
+                </div>
+                ${statusBadge(data.status)}
+            </div>
+            <div class="det-section">
+                <h4>Host Organisation</h4>
+                <div class="det-grid">
+                    <span class="det-label">Company</span><span class="det-value">${escapeHtml(data.company_name)}</span>
+                </div>
+            </div>
+            <div class="det-section">
+                <h4>Submission</h4>
+                <div class="det-grid">
+                    <span class="det-label">Requested</span><span class="det-value">${fmtDate(data.request_date)}</span>
+                </div>
+            </div>
         `;
-        document.getElementById('detailsModal').style.display = 'block';
+        document.getElementById('detailsModal').classList.add('open');
     }
-    function closeModal() { document.getElementById('detailsModal').style.display = 'none'; }
-    window.onclick = function(e) { if(e.target == document.getElementById('detailsModal')) closeModal(); }
+    function closeModal() { document.getElementById('detailsModal').classList.remove('open'); }
+    window.onclick = e => { if (e.target === document.getElementById('detailsModal')) closeModal(); };
     </script>
 </body>
 </html>

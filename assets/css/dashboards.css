@@ -1,0 +1,217 @@
+/* ============================================================
+   Dashboard shared widgets
+   Used by:
+     admin/dashboard.php
+     hod/dashboard.php
+     secretary/dashboard.php
+   Centralises the patterns these three pages all duplicated:
+   filter bar, status badges, modals, notif bell, sig warnings.
+   ============================================================ */
+
+/* ---------- Filter bar (admin/dashboard global search) ---------- */
+.filter-bar {
+    background: white;
+    padding: 18px;
+    border-radius: 12px;
+    box-shadow: 0 2px 10px rgba(0,0,0,0.04);
+    margin-bottom: 22px;
+    display: flex;
+    gap: 14px;
+    align-items: flex-end;
+    flex-wrap: wrap;
+}
+.filter-bar .filter-group {
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+}
+.filter-bar label {
+    font-size: 0.78rem;
+    font-weight: 600;
+    color: #64748b;
+}
+.filter-input {
+    padding: 9px 12px;
+    border: 1px solid #e2e8f0;
+    border-radius: 6px;
+    outline: none;
+    min-width: 200px;
+    font-size: 0.9rem;
+    background: white;
+}
+.filter-input:focus {
+    border-color: #0D8ABC;
+    box-shadow: 0 0 0 3px rgba(13,138,188,0.12);
+}
+.btn-filter {
+    background: #0D8ABC; color: white;
+    border: none; padding: 9px 22px;
+    border-radius: 6px; cursor: pointer;
+    font-weight: 600; height: 40px;
+}
+.btn-filter:hover { background: #0a6e96; }
+.btn-reset {
+    background: #f1f5f9; color: #475569;
+    padding: 9px 16px; border-radius: 6px;
+    text-decoration: none; font-size: 0.9rem;
+    height: 40px; line-height: 22px;
+    align-self: flex-end;
+}
+
+/* ---------- Department badge ---------- */
+.dept-badge {
+    background: #e0f2fe; color: #0369a1;
+    padding: 3px 10px;
+    border-radius: 4px;
+    font-size: 0.75rem;
+    font-weight: 700;
+}
+
+/* ---------- HOD signature-required warning ---------- */
+.sig-warning {
+    background: #fef2f2; border: 1px solid #fecaca; color: #991b1b;
+    padding: 14px 18px;
+    border-radius: 8px;
+    margin-bottom: 20px;
+    display: flex; align-items: center; gap: 10px;
+}
+.sig-warning a { color: #991b1b; text-decoration: underline; font-weight: 600; }
+.sig-status {
+    padding: 12px 16px;
+    border-radius: 8px;
+    margin-bottom: 18px;
+    font-size: 0.9rem;
+    border: 1px solid;
+    display: flex; align-items: center; gap: 10px;
+}
+.sig-ok  { background: #dcfce7; border-color: #bbf7d0; color: #166534; }
+.sig-err { background: #fee2e2; border-color: #fecaca; color: #991b1b; }
+
+/* ---------- Btn variants seen across dashboards ---------- */
+.btn-disabled {
+    opacity: 0.5;
+    cursor: not-allowed !important;
+    filter: grayscale(1);
+}
+.btn-download { color: #2563eb; font-size: 1.2rem; }
+
+/* ---------- Notification bell ---------- */
+.notif-bell {
+    position: relative;
+    font-size: 1.4rem;
+    color: #64748b;
+    margin-right: 15px;
+    cursor: pointer;
+    transition: color 0.2s;
+}
+.notif-bell:hover { color: #0D8ABC; }
+.notif-badge {
+    background: #ef4444;
+    color: white;
+    padding: 2px 6px;
+    border-radius: 50%;
+    font-size: 0.7rem;
+    position: absolute;
+    top: -5px; right: -5px;
+    border: 2px solid #f8fafc;
+}
+
+/* ---------- "Semester overlap" warning chip on rows ---------- */
+.overlap-warning {
+    font-size: 0.72rem;
+    background: #fee2e2;
+    color: #991b1b;
+    padding: 2px 7px;
+    border-radius: 4px;
+    display: inline-block;
+    margin-top: 4px;
+}
+
+/* ---------- Modal shell (request details) ---------- */
+.modal {
+    display: none;
+    position: fixed; inset: 0;
+    background: rgba(15, 23, 42, 0.6);
+    z-index: 1000;
+    align-items: flex-start;
+    justify-content: center;
+    padding: 5vh 16px;
+    overflow-y: auto;
+}
+.modal.open { display: flex; }
+.modal-content {
+    background: white;
+    border-radius: 14px;
+    box-shadow: 0 25px 50px rgba(0,0,0,0.25);
+    width: 100%;
+    max-width: 540px;
+    overflow: hidden;
+    animation: modal-pop 0.18s ease-out;
+}
+@keyframes modal-pop {
+    from { opacity: 0; transform: translateY(-12px); }
+    to   { opacity: 1; transform: translateY(0); }
+}
+.modal-header {
+    display: flex; justify-content: space-between; align-items: center;
+    padding: 18px 22px;
+    background: linear-gradient(135deg, #0D8ABC 0%, #075f81 100%);
+    color: white;
+}
+.modal-header h3 { margin: 0; font-size: 1.05rem; }
+.modal-close {
+    background: rgba(255,255,255,0.2);
+    border: none; color: white;
+    width: 30px; height: 30px;
+    border-radius: 50%;
+    font-size: 1rem; cursor: pointer;
+}
+.modal-close:hover { background: rgba(255,255,255,0.35); }
+.modal-body { padding: 22px; }
+.modal-footer {
+    padding: 14px 22px;
+    background: #f8fafc;
+    border-top: 1px solid #e2e8f0;
+    display: flex; justify-content: flex-end; gap: 8px;
+}
+
+/* ---------- Modal content sections (the rich detail rows) ---------- */
+.det-status-row {
+    display: flex; justify-content: space-between; align-items: center;
+    margin-bottom: 16px;
+}
+.det-status-row .student-name {
+    font-size: 1.1rem; font-weight: 700; color: #0f172a;
+}
+.det-status-row .student-meta {
+    font-size: 0.78rem; color: #64748b;
+}
+.det-section {
+    margin-bottom: 16px;
+    padding-bottom: 14px;
+    border-bottom: 1px solid #f1f5f9;
+}
+.det-section:last-child {
+    margin-bottom: 0; padding-bottom: 0; border-bottom: none;
+}
+.det-section h4 {
+    font-size: 0.7rem;
+    color: #94a3b8;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin: 0 0 8px;
+}
+.det-grid {
+    display: grid; grid-template-columns: 130px 1fr; gap: 6px 14px;
+    font-size: 0.9rem; color: #1e293b;
+}
+.det-grid .det-label { color: #64748b; }
+.det-grid .det-value { font-weight: 600; }
+.det-rejection {
+    background: #fef2f2;
+    border-left: 3px solid #ef4444;
+    color: #991b1b;
+    padding: 10px 14px;
+    border-radius: 6px;
+    font-size: 0.88rem;
+}

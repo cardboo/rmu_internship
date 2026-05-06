@@ -86,6 +86,13 @@ if (!function_exists('nav_active')) {
             </a>
         <?php endif; ?>
 
+        <?php if ($role === 'secretary'): ?>
+            <div class="nav-section">DEPARTMENT</div>
+            <a href="<?php echo url('secretary/register_student.php'); ?>" class="<?php echo nav_active('secretary/register_student.php', $current_path); ?>">
+                <i class="fas fa-user-plus"></i>&nbsp;&nbsp;Register Student
+            </a>
+        <?php endif; ?>
+
         <?php if ($role === 'hod'): ?>
             <div class="nav-section">ACADEMIC OVERSIGHT</div>
             <a href="<?php echo url('hod/logbook_review.php'); ?>" class="<?php echo nav_active('hod/logbook_review.php', $current_path); ?>">

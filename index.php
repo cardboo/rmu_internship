@@ -109,8 +109,11 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
                 Sign In
             </button>
         </form>
-        
-        <div style="margin-top: 20px; text-align: center; font-size: 0.85rem; color: #888;">
+
+        <div style="margin-top: 18px; text-align: center; font-size: 0.85rem; color: #475569;">
+            New student? <a href="<?php echo BASE_URL; ?>register.php" style="color:#0D8ABC; font-weight:600; text-decoration:none;">Create your account</a>
+        </div>
+        <div style="margin-top: 14px; text-align: center; font-size: 0.8rem; color: #94a3b8;">
             &copy; <?php echo date('Y'); ?> Regional Maritime University
         </div>
     </div>

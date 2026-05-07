@@ -254,6 +254,41 @@ $registry = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
 $total_count = (int)$pdo->query("SELECT COUNT(*) FROM student_registry")->fetchColumn();
 
+// ----------------------------------------------------------------------
+// Drift report: student users that don't appear in the registry
+// (because of NULL index_number, mismatched dept, or mismatched program).
+// Surfaces the data-quality issues admin needs to fix so migration 013
+// can finish reconciling.
+// ----------------------------------------------------------------------
+$drift = [];
+try {
+    $drift = $pdo->query("
+        SELECT u.id, u.full_name, u.email, u.index_number,
+               u.department AS user_department,
+               u.program    AS user_program,
+               CASE
+                   WHEN u.index_number IS NULL OR u.index_number = '' THEN 'no_index'
+                   WHEN d.id IS NULL THEN 'unknown_dept'
+                   WHEN p.id IS NULL THEN 'unknown_program'
+                   ELSE 'other'
+               END AS reason
+        FROM       users u
+        LEFT JOIN  departments      d ON d.name = u.department
+        LEFT JOIN  programs         p ON p.name = u.program AND p.department_id = d.id
+        LEFT JOIN  student_registry r ON r.index_number = u.index_number
+        WHERE  u.role = 'student'
+          AND  COALESCE(u.is_archived, 0) = 0
+          AND  (
+                 u.index_number IS NULL
+              OR u.index_number = ''
+              OR r.index_number IS NULL
+               )
+        ORDER BY reason, u.full_name
+    ")->fetchAll(PDO::FETCH_ASSOC);
+} catch (PDOException $e) {
+    $drift = []; // fail soft if migration 001 hasn't run
+}
+
 // data for the dependent dropdowns on the single-entry form
 $departments = $pdo->query("SELECT id, name FROM departments ORDER BY name")->fetchAll(PDO::FETCH_ASSOC);
 $programs    = $pdo->query("SELECT id, department_id, name FROM programs ORDER BY name")->fetchAll(PDO::FETCH_ASSOC);
@@ -291,6 +326,58 @@ foreach ($programs as $p) {
         <div class="banner banner-<?php echo htmlspecialchars($flash['type']); ?>">
             <i class="fas fa-info-circle"></i> <?php echo htmlspecialchars($flash['msg']); ?>
         </div>
+    <?php endif; ?>
+
+    <?php if (!empty($drift)): ?>
+        <details class="row-errors" open>
+            <summary>
+                <i class="fas fa-exclamation-triangle"></i>
+                <?php echo count($drift); ?> student account<?php echo count($drift) === 1 ? '' : 's'; ?>
+                in Manage Users <strong>not appearing in this registry</strong>
+                — usually a data-quality fix
+            </summary>
+            <p class="muted small" style="margin: 8px 0 12px;">
+                After fixing the records below, run
+                <code>migrations/013_reconcile_registry.sql</code> from phpMyAdmin to bring them in.
+            </p>
+            <table style="width:100%; font-size: 0.88rem;">
+                <thead>
+                    <tr>
+                        <th style="text-align:left; padding: 4px 6px;">Name</th>
+                        <th style="text-align:left; padding: 4px 6px;">Index</th>
+                        <th style="text-align:left; padding: 4px 6px;">Department</th>
+                        <th style="text-align:left; padding: 4px 6px;">Programme</th>
+                        <th style="text-align:left; padding: 4px 6px;">Why</th>
+                        <th></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <?php
+                    $reason_labels = [
+                        'no_index'        => 'no index number',
+                        'unknown_dept'    => "department doesn't match a row in Programs &amp; Depts",
+                        'unknown_program' => "programme doesn't match the department",
+                        'other'           => 'not yet reconciled — run migration 013',
+                    ];
+                    foreach ($drift as $u):
+                    ?>
+                        <tr>
+                            <td style="padding: 4px 6px;"><?php echo htmlspecialchars($u['full_name']); ?></td>
+                            <td style="padding: 4px 6px;"><code><?php echo htmlspecialchars($u['index_number'] ?? '—'); ?></code></td>
+                            <td style="padding: 4px 6px;"><?php echo htmlspecialchars($u['user_department'] ?? '—'); ?></td>
+                            <td style="padding: 4px 6px;"><?php echo htmlspecialchars($u['user_program'] ?? '—'); ?></td>
+                            <td style="padding: 4px 6px;"><?php echo $reason_labels[$u['reason']] ?? htmlspecialchars($u['reason']); ?></td>
+                            <td style="padding: 4px 6px;">
+                                <a href="<?php echo BASE_URL; ?>admin/edit_user.php?id=<?php echo (int)$u['id']; ?>"
+                                   class="btn btn-ghost btn-sm">
+                                    <i class="fas fa-edit"></i>&nbsp; Fix
+                                </a>
+                            </td>
+                        </tr>
+                    <?php endforeach; ?>
+                </tbody>
+            </table>
+        </details>
     <?php endif; ?>
 
     <?php if (!empty($row_errs)): ?>

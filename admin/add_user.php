@@ -57,9 +57,73 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['add_user'])) {
             $gender !== '' ? $gender : null,
             $role === 'student' && $index_number !== '' ? $index_number : null,
         ]);
+        $new_user_id = (int)$pdo->lastInsertId();
+
+        // ------------------------------------------------------------
+        // Mirror the new student into student_registry so they show up
+        // in the registry view alongside CSV-imported students.
+        //
+        // Two cases:
+        //   - A registry row already exists for this index_number
+        //     (registry office uploaded them earlier) — just flip
+        //     is_claimed = 1 and link the user.
+        //   - No registry row yet — insert one, but only if the
+        //     dept + programme map cleanly to canonical tables.
+        //     Otherwise we surface a warning (drift list on
+        //     admin/registry.php will pick it up too).
+        // ------------------------------------------------------------
+        $registry_warning = null;
+        if ($role === 'student' && $index_number !== '') {
+            $exists = $pdo->prepare("SELECT id FROM student_registry WHERE index_number = ?");
+            $exists->execute([$index_number]);
+            if ($exists->fetchColumn()) {
+                $pdo->prepare("
+                    UPDATE student_registry
+                    SET is_claimed = 1, claimed_user_id = ?
+                    WHERE index_number = ?
+                ")->execute([$new_user_id, $index_number]);
+            } else {
+                $deptStmt = $pdo->prepare("SELECT id FROM departments WHERE name = ?");
+                $deptStmt->execute([$department]);
+                $dept_id = $deptStmt->fetchColumn();
+
+                $prog_id = null;
+                if ($dept_id) {
+                    $progStmt = $pdo->prepare("SELECT id FROM programs WHERE name = ? AND department_id = ?");
+                    $progStmt->execute([$program, $dept_id]);
+                    $prog_id = $progStmt->fetchColumn();
+                }
+
+                if ($dept_id && $prog_id) {
+                    $pdo->prepare("
+                        INSERT IGNORE INTO student_registry
+                            (index_number, full_name, email, department_id, program_id,
+                             level, gender, is_claimed, claimed_user_id)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?)
+                    ")->execute([
+                        $index_number, $full_name,
+                        $email,
+                        (int)$dept_id, (int)$prog_id,
+                        $level !== '' ? $level : null,
+                        $gender !== '' ? $gender : null,
+                        $new_user_id,
+                    ]);
+                } else {
+                    $registry_warning = "Note: this student wasn't added to the Student Registry because "
+                        . (!$dept_id ? "department '$department' doesn't match a canonical record"
+                                     : "programme '$program' isn't in the '$department' department")
+                        . ". Fix the user's record or add the missing programme, then run migration 013 to reconcile.";
+                }
+            }
+        } elseif ($role === 'student' && $index_number === '') {
+            $registry_warning = "Note: this student wasn't added to the Student Registry because no index number was provided.";
+        }
 
         // Stash the temp password so users.php can show it once.
         $_SESSION['temp_pw_notice'] = ['name' => $full_name, 'password' => $password];
+        if ($registry_warning) {
+            $_SESSION['flash_warning'] = $registry_warning;
+        }
 
         // Email the new user the temp password (best-effort).
         require_once __DIR__ . '/../includes/email.php';

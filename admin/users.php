@@ -78,6 +78,8 @@ $msg_map = [
 $flash = $msg_map[$_GET['msg'] ?? ''] ?? null;
 $temp_pw_notice = $_SESSION['temp_pw_notice'] ?? null;
 unset($_SESSION['temp_pw_notice']);
+$flash_warning  = $_SESSION['flash_warning'] ?? null;
+unset($_SESSION['flash_warning']);
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -116,6 +118,13 @@ unset($_SESSION['temp_pw_notice']);
             <strong>Temporary password for <?php echo htmlspecialchars($temp_pw_notice['name']); ?>:</strong>
             <code><?php echo htmlspecialchars($temp_pw_notice['password']); ?></code>
             &nbsp;Share this with the user — they will be forced to change it on first login.
+        </div>
+    <?php endif; ?>
+
+    <?php if ($flash_warning): ?>
+        <div class="banner banner-warning">
+            <i class="fas fa-exclamation-triangle"></i>
+            <?php echo htmlspecialchars($flash_warning); ?>
         </div>
     <?php endif; ?>
 

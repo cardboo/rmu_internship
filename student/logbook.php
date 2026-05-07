@@ -1,167 +1,438 @@
 <?php
-if (session_status() === PHP_SESSION_NONE) { session_start(); }
 require __DIR__ . '/../includes/db.php';
+require_role('student');
 
-if (!isset($_SESSION['user_id']) || $_SESSION['role'] != 'student') {
-    header("Location: " . BASE_URL . "index.php");
-    exit;
-}
+$student_id = (int)$_SESSION['user_id'];
+$cur_year   = current_academic_year($pdo);
 
-$student_id = $_SESSION['user_id'];
-$message = "";
+// ----------------------------------------------------------------------
+// Pull header info auto-filled at the top of the form
+// (matches the "Name of Student / Programme / Index No / Name of
+// Organisation / Department/Office" rows on the official PDF).
+// ----------------------------------------------------------------------
+$userStmt = $pdo->prepare("SELECT full_name, index_number, program FROM users WHERE id = ?");
+$userStmt->execute([$student_id]);
+$me = $userStmt->fetch(PDO::FETCH_ASSOC) ?: [];
 
-if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['submit_log'])) {
-    $week       = $_POST['week_number'];
-    $start      = $_POST['start_date'];
-    $end        = $_POST['end_date'];
-    $activities = $_POST['activities'];
+$plStmt = $pdo->prepare("
+    SELECT * FROM placements
+    WHERE student_id = ? AND status = 'active'
+    " . ($cur_year ? " AND academic_year_id = " . (int)$cur_year['id'] : "") . "
+    ORDER BY created_at DESC LIMIT 1
+");
+$plStmt->execute([$student_id]);
+$placement = $plStmt->fetch(PDO::FETCH_ASSOC) ?: null;
 
-    // Server-side guard: dates may not be in the past, end >= start.
-    $today_str = date('Y-m-d');
-    $err = null;
-    if ($start < $today_str || $end < $today_str) {
-        $err = 'Logbook dates cannot be in the past.';
-    } elseif ($end < $start) {
-        $err = 'End date must be on or after the start date.';
+// ----------------------------------------------------------------------
+// Find the editing target if ?id= present, otherwise we're creating new.
+// ----------------------------------------------------------------------
+$editing = null;
+$editing_days = [];
+if (!empty($_GET['id'])) {
+    $stmt = $pdo->prepare("SELECT * FROM logbooks WHERE id = ? AND student_id = ?");
+    $stmt->execute([(int)$_GET['id'], $student_id]);
+    $editing = $stmt->fetch(PDO::FETCH_ASSOC) ?: null;
+    if ($editing) {
+        $dStmt = $pdo->prepare("SELECT * FROM logbook_days WHERE logbook_id = ? ORDER BY sort_order, day_date");
+        $dStmt->execute([$editing['id']]);
+        $editing_days = $dStmt->fetchAll(PDO::FETCH_ASSOC);
     }
+}
+$readonly = $editing && (int)$editing['is_submitted'] === 1;
 
-    if ($err) {
-        $message = "<div class='banner banner-error' style='margin-bottom:20px;'>"
-                 . htmlspecialchars($err) . "</div>";
+$flash = ['type' => '', 'msg' => ''];
+
+// ----------------------------------------------------------------------
+// POST: save draft / submit
+// ----------------------------------------------------------------------
+if ($_SERVER['REQUEST_METHOD'] === 'POST'
+    && (isset($_POST['save_draft']) || isset($_POST['submit_log']))) {
+
+    if (!$placement) {
+        $flash = ['type' => 'error', 'msg' => 'You need to register a placement before logging weekly entries.'];
     } else {
-        $file_path = null;
+        $week        = (int)($_POST['week_number']     ?? 0);
+        $week_start  = trim($_POST['week_start']       ?? '');
+        $week_end    = trim($_POST['week_end']         ?? '');
+        $student_rem = trim($_POST['student_remarks']  ?? '');
+        $log_id      = (int)($_POST['log_id']          ?? 0);  // 0 = new
+        $finalise    = isset($_POST['submit_log']);
 
-        // Handle File Upload - filesystem dir is anchored via __DIR__.
-        if (isset($_FILES['proof_file']) && $_FILES['proof_file']['error'] == 0) {
-            $logbook_dir = __DIR__ . '/../uploads/logbooks/';
-            if (!is_dir($logbook_dir)) mkdir($logbook_dir, 0777, true);
+        // Day rows — labels are fixed Mon-Fri.
+        $labels = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'];
+        $days   = [];
+        foreach ($labels as $i => $label) {
+            $d = trim($_POST['day_date'][$i]       ?? '');
+            $a = trim($_POST['day_activities'][$i] ?? '');
+            $days[] = ['label' => $label, 'date' => $d, 'activities' => $a, 'sort' => $i + 1];
+        }
 
-            $file_ext     = pathinfo($_FILES['proof_file']['name'], PATHINFO_EXTENSION);
-            $new_filename = "log_" . $student_id . "_w" . $week . "_" . time() . "." . $file_ext;
-            $target_file  = $logbook_dir . $new_filename;
-
-            if (move_uploaded_file($_FILES['proof_file']['tmp_name'], $target_file)) {
-                // DB stores the project-root-relative path so view links can prefix BASE_URL.
-                $file_path = 'uploads/logbooks/' . $new_filename;
+        $err = null;
+        if ($week < 1) {
+            $err = 'Week number is required.';
+        } elseif ($week_start === '' || $week_end === '' || $week_end < $week_start) {
+            $err = 'Provide a valid week-beginning and week-ending date.';
+        } else {
+            // At least one day must have an activity OR the entry is just a draft.
+            $has_any = false;
+            foreach ($days as $d) {
+                if ($d['date'] === '' && $d['activities'] !== '') {
+                    $err = $d['label'] . ' has activities but no date.';
+                    break;
+                }
+                if ($d['activities'] !== '') $has_any = true;
+            }
+            if (!$err && $finalise && !$has_any) {
+                $err = 'Add at least one day of activities before submitting.';
             }
         }
 
-        $stmt = $pdo->prepare(
-            "INSERT INTO logbooks (student_id, week_number, start_date, end_date, activities, file_path)
-             VALUES (?, ?, ?, ?, ?, ?)"
-        );
-        if ($stmt->execute([$student_id, $week, $start, $end, $activities, $file_path])) {
-            $message = "<div class='status-badge active' style='margin-bottom: 20px; width: 100%; text-align: center; padding: 15px;'><i class='fas fa-check-circle'></i> Week "
-                     . htmlspecialchars($week) . " logbook and proof submitted successfully!</div>";
+        if (!$err) {
+            try {
+                $pdo->beginTransaction();
+                if ($log_id) {
+                    $pdo->prepare("
+                        UPDATE logbooks
+                        SET week_number = ?, start_date = ?, end_date = ?,
+                            student_remarks = ?, is_submitted = ?,
+                            placement_id = COALESCE(placement_id, ?),
+                            academic_year_id = COALESCE(academic_year_id, ?)
+                        WHERE id = ? AND student_id = ?
+                    ")->execute([
+                        $week, $week_start, $week_end, $student_rem !== '' ? $student_rem : null,
+                        $finalise ? 1 : 0,
+                        (int)$placement['id'],
+                        $cur_year ? (int)$cur_year['id'] : null,
+                        $log_id, $student_id,
+                    ]);
+                    // Replace days
+                    $pdo->prepare("DELETE FROM logbook_days WHERE logbook_id = ?")->execute([$log_id]);
+                } else {
+                    $pdo->prepare("
+                        INSERT INTO logbooks
+                            (student_id, placement_id, week_number, start_date, end_date,
+                             student_remarks, is_submitted, academic_year_id, activities)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, '')
+                    ")->execute([
+                        $student_id,
+                        (int)$placement['id'],
+                        $week, $week_start, $week_end,
+                        $student_rem !== '' ? $student_rem : null,
+                        $finalise ? 1 : 0,
+                        $cur_year ? (int)$cur_year['id'] : null,
+                    ]);
+                    $log_id = (int)$pdo->lastInsertId();
+                }
+
+                $insDay = $pdo->prepare("
+                    INSERT INTO logbook_days (logbook_id, day_label, day_date, activities, sort_order)
+                    VALUES (?, ?, ?, ?, ?)
+                ");
+                foreach ($days as $d) {
+                    if ($d['date'] === '' && $d['activities'] === '') continue;
+                    $insDay->execute([
+                        $log_id, $d['label'],
+                        $d['date'] !== '' ? $d['date'] : $week_start,
+                        $d['activities'] !== '' ? $d['activities'] : null,
+                        $d['sort'],
+                    ]);
+                }
+                $pdo->commit();
+
+                $msg = $finalise ? 'submitted' : 'saved';
+                header("Location: logbook.php?id=$log_id&msg=$msg");
+                exit;
+            } catch (PDOException $e) {
+                $pdo->rollBack();
+                $err = 'Database error: ' . $e->getMessage();
+            }
         }
+
+        if ($err) $flash = ['type' => 'error', 'msg' => $err];
     }
 }
 
-// Fetch all previous logs
-$stmt = $pdo->prepare("SELECT * FROM logbooks WHERE student_id = ? ORDER BY week_number DESC");
-$stmt->execute([$student_id]);
-$logs = $stmt->fetchAll();
-?>
+if (($_GET['msg'] ?? '') === 'saved')     $flash = ['type' => 'success', 'msg' => 'Draft saved.'];
+if (($_GET['msg'] ?? '') === 'submitted') $flash = ['type' => 'success', 'msg' => 'Logbook submitted. Your supervisor will be notified to add their remarks.'];
 
+// ----------------------------------------------------------------------
+// All my logs (newest first) — for the list at the bottom.
+// ----------------------------------------------------------------------
+$listStmt = $pdo->prepare("
+    SELECT l.*, COUNT(d.id) AS day_count
+    FROM logbooks l
+    LEFT JOIN logbook_days d ON d.logbook_id = l.id
+    WHERE l.student_id = ?
+    GROUP BY l.id
+    ORDER BY l.week_number DESC, l.start_date DESC
+");
+$listStmt->execute([$student_id]);
+$all_logs = $listStmt->fetchAll(PDO::FETCH_ASSOC);
+
+// Suggest the next week number for a fresh entry.
+$next_week = 1;
+foreach ($all_logs as $l) {
+    if ((int)$l['week_number'] >= $next_week) $next_week = (int)$l['week_number'] + 1;
+}
+
+// Pre-fill values
+if ($editing) {
+    $f_week  = $editing['week_number'];
+    $f_start = $editing['start_date'];
+    $f_end   = $editing['end_date'];
+    $f_rem   = $editing['student_remarks'] ?? '';
+    // Build a Mon-Fri map from the days that exist
+    $by_label = [];
+    foreach ($editing_days as $d) $by_label[$d['day_label']] = $d;
+} else {
+    $f_week  = $next_week;
+    $f_start = '';
+    $f_end   = '';
+    $f_rem   = '';
+    $by_label = [];
+}
+?>
 <!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Weekly Logbook | RMU</title>
+    <title>Weekly Logbook | Student Portal</title>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <link rel="stylesheet" href="<?php echo asset('css/style.css'); ?>">
     <link rel="stylesheet" href="<?php echo asset('css/layout.css'); ?>">
-    <style>
-        .log-card { background: white; padding: 20px; border-radius: 10px; margin-bottom: 20px; border-left: 5px solid var(--primary, #0D8ABC); box-shadow: 0 2px 4px rgba(0,0,0,0.05); }
-        .proof-link { display: inline-block; margin-top: 10px; color: var(--primary, #0D8ABC); font-weight: 600; text-decoration: none; padding: 5px 10px; background: #f0f4ff; border-radius: 5px; transition: 0.3s; }
-        .proof-link:hover { background: #e0e7ff; }
-        .form-card { background: white; padding: 25px; border-radius: 10px; border: 1px solid var(--border); }
-    </style>
+    <link rel="stylesheet" href="<?php echo asset('css/registry.css'); ?>">
+    <link rel="stylesheet" href="<?php echo asset('css/student.css'); ?>">
+    <link rel="stylesheet" href="<?php echo asset('css/logbook.css'); ?>">
 </head>
 <body>
-    
-    <?php include __DIR__ . '/../includes/sidebar.php'; ?>
+<?php include __DIR__ . '/../includes/sidebar.php'; ?>
 
-    <div class="main-content">
-        
-        <div class="header-panel">
-            <h1>Weekly Work Log</h1>
-            <p>Document your daily activities and upload weekly proof signed by your supervisor.</p>
+<div class="main-content">
+    <div class="header-panel">
+        <div>
+            <h1>Weekly Logbook</h1>
+            <p>One entry per week, mirroring the official RMU log sheet. Save as draft as you go, submit when the week is complete.</p>
         </div>
-
-        <?php echo $message; ?>
-
-        <div class="form-card" style="margin-bottom: 40px;">
-            <h3 style="margin-bottom: 20px;"><i class="fas fa-edit"></i> Submit New Weekly Entry</h3>
-            <form action="" method="POST" enctype="multipart/form-data">
-                
-                <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 15px; margin-bottom: 15px;">
-                    <div class="metric-box">
-                        <label style="font-weight: 600; font-size: 0.85rem;">Week #</label>
-                        <input type="number" name="week_number" required class="date-chip" min="1" style="width: 100%; margin-top: 5px;">
-                    </div>
-<?php $today = date('Y-m-d'); ?>
-                    <div class="metric-box">
-                        <label style="font-weight: 600; font-size: 0.85rem;">From Date</label>
-                        <input type="date" name="start_date" required min="<?php echo $today; ?>"
-                               class="date-chip" style="width: 100%; margin-top: 5px;">
-                    </div>
-                    <div class="metric-box">
-                        <label style="font-weight: 600; font-size: 0.85rem;">To Date</label>
-                        <input type="date" name="end_date" required min="<?php echo $today; ?>"
-                               class="date-chip" style="width: 100%; margin-top: 5px;">
-                    </div>
-                </div>
-
-                <div class="metric-box" style="margin-bottom: 15px;">
-                    <label style="font-weight: 600; font-size: 0.85rem;">Activities Overview</label>
-                    <textarea name="activities" required class="date-chip" rows="4" style="width: 100%; margin-top: 5px; border: 1px solid var(--border); resize: vertical;"></textarea>
-                </div>
-
-                <div class="metric-box" style="margin-bottom: 20px;">
-                    <label style="font-weight: 600; font-size: 0.85rem;">Upload Signed Proof (Photo/PDF)</label>
-                    <input type="file" name="proof_file" accept="image/*,.pdf" required class="date-chip" style="width: 100%; margin-top: 5px; border: 1px solid var(--border);">
-                </div>
-
-                <div style="text-align: right;">
-                    <button type="submit" name="submit_log" class="btn-save">
-                        <i class="fas fa-cloud-upload-alt"></i> Submit Week Log
-                    </button>
-                </div>
-            </form>
-        </div>
-
-        <h2 style="margin-bottom: 15px;"><i class="fas fa-history"></i> Previous Submissions</h2>
-        
-        <?php if (empty($logs)): ?>
-            <div style="padding: 20px; background: #fff; text-align: center; border-radius: 10px; color: #64748b;">
-                No logbooks submitted yet.
+        <?php if ($placement): ?>
+            <div class="date-chip">
+                <i class="fas fa-building"></i>&nbsp; <?php echo htmlspecialchars($placement['company_name']); ?>
             </div>
-        <?php else: ?>
-            <?php foreach($logs as $log): ?>
-                <div class="log-card">
-                    <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #e2e8f0; padding-bottom: 10px; margin-bottom: 10px;">
-                        <strong style="font-size: 1.1rem; color: #1e293b;">
-                            Week <?php echo htmlspecialchars($log['week_number']); ?> 
-                            <span style="font-size: 0.8rem; color: #64748b; font-weight: normal; margin-left: 10px;">
-                                (<?php echo htmlspecialchars($log['start_date']); ?> to <?php echo htmlspecialchars($log['end_date']); ?>)
-                            </span>
-                        </strong>
-                        
-                        <?php if($log['file_path']): ?>
-                            <a href="<?php echo BASE_URL . htmlspecialchars($log['file_path']); ?>" target="_blank" class="proof-link">
-                                <i class="fas fa-paperclip"></i> View Proof
-                            </a>
+        <?php endif; ?>
+    </div>
+
+    <?php if ($flash['msg']): ?>
+        <div class="banner banner-<?php echo $flash['type']; ?>">
+            <i class="fas fa-info-circle"></i> <?php echo htmlspecialchars($flash['msg']); ?>
+        </div>
+    <?php endif; ?>
+
+    <?php if (!$placement): ?>
+        <div class="banner banner-warning">
+            <i class="fas fa-exclamation-circle"></i>
+            You haven't registered a placement yet. <a href="placement.php">Register your placement</a> first — your weekly logs need a host organisation to attach to.
+        </div>
+    <?php endif; ?>
+
+    <!-- Auto-filled header info -->
+    <div class="card log-header">
+        <div class="grid-2">
+            <div><span class="muted small">Name of Student</span><br><strong><?php echo htmlspecialchars($me['full_name'] ?? ''); ?></strong></div>
+            <div><span class="muted small">Programme</span><br><strong><?php echo htmlspecialchars($me['program'] ?? '—'); ?></strong></div>
+            <div><span class="muted small">Index No.</span><br><strong><?php echo htmlspecialchars($me['index_number'] ?? '—'); ?></strong></div>
+            <div><span class="muted small">Name of Organisation</span><br><strong><?php echo htmlspecialchars($placement['company_name'] ?? '—'); ?></strong></div>
+            <div><span class="muted small">Department / Office</span><br><strong><?php echo htmlspecialchars($placement['company_department'] ?? '—'); ?></strong></div>
+        </div>
+    </div>
+
+    <!-- New / edit / view -->
+    <?php if ($placement): ?>
+        <div class="card" style="margin-top: 18px;">
+            <h3>
+                <?php if ($readonly): ?>
+                    <i class="fas fa-lock"></i>&nbsp; Week <?php echo (int)$f_week; ?> &mdash; submitted
+                <?php elseif ($editing): ?>
+                    <i class="fas fa-edit"></i>&nbsp; Edit Week <?php echo (int)$f_week; ?> draft
+                <?php else: ?>
+                    <i class="fas fa-plus-circle"></i>&nbsp; New Weekly Entry
+                <?php endif; ?>
+            </h3>
+
+            <form method="POST" autocomplete="off" id="logForm">
+                <?php if ($editing): ?>
+                    <input type="hidden" name="log_id" value="<?php echo (int)$editing['id']; ?>">
+                <?php endif; ?>
+
+                <div class="grid-3">
+                    <div class="field">
+                        <label>Week Number</label>
+                        <input type="number" name="week_number" min="1" required
+                               value="<?php echo htmlspecialchars((string)$f_week); ?>"
+                               <?php echo $readonly ? 'disabled' : ''; ?>>
+                    </div>
+                    <div class="field">
+                        <label>Week Beginning (Monday)</label>
+                        <input type="date" name="week_start" id="week_start" required
+                               value="<?php echo htmlspecialchars($f_start); ?>"
+                               <?php echo $readonly ? 'disabled' : ''; ?>>
+                    </div>
+                    <div class="field">
+                        <label>Week Ending (Friday)</label>
+                        <input type="date" name="week_end" id="week_end" required
+                               value="<?php echo htmlspecialchars($f_end); ?>"
+                               <?php echo $readonly ? 'disabled' : ''; ?>>
+                    </div>
+                </div>
+
+                <h4 class="section-h">Daily Activities (Mon–Fri)</h4>
+                <table class="day-table">
+                    <thead>
+                        <tr>
+                            <th style="width: 110px;">Day</th>
+                            <th style="width: 160px;">Date</th>
+                            <th>Activities Undertaken</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <?php foreach (['Monday','Tuesday','Wednesday','Thursday','Friday'] as $i => $label): ?>
+                            <?php $row = $by_label[$label] ?? ['day_date' => '', 'activities' => '']; ?>
+                            <tr>
+                                <th><?php echo $label; ?></th>
+                                <td>
+                                    <input type="date" name="day_date[<?php echo $i; ?>]"
+                                           class="day-date"
+                                           value="<?php echo htmlspecialchars($row['day_date']); ?>"
+                                           <?php echo $readonly ? 'disabled' : ''; ?>>
+                                </td>
+                                <td>
+                                    <textarea name="day_activities[<?php echo $i; ?>]" rows="2"
+                                              <?php echo $readonly ? 'disabled' : ''; ?>><?php echo htmlspecialchars($row['activities'] ?? ''); ?></textarea>
+                                </td>
+                            </tr>
+                        <?php endforeach; ?>
+                    </tbody>
+                </table>
+
+                <h4 class="section-h">Student's Remarks</h4>
+                <div class="field">
+                    <textarea name="student_remarks" rows="3"
+                              <?php echo $readonly ? 'disabled' : ''; ?>><?php echo htmlspecialchars($f_rem); ?></textarea>
+                </div>
+
+                <?php if ($editing && (int)$editing['is_submitted'] === 1): ?>
+                    <h4 class="section-h">Supervisor's Remarks</h4>
+                    <div class="sup-block">
+                        <?php if (!empty($editing['supervisor_remarks'])): ?>
+                            <p><?php echo nl2br(htmlspecialchars($editing['supervisor_remarks'])); ?></p>
+                            <p class="muted small">
+                                — <?php echo htmlspecialchars($editing['supervisor_signed_by_name'] ?? ''); ?>
+                                <?php if (!empty($editing['supervisor_signed_by_status'])): ?>
+                                    (<?php echo htmlspecialchars($editing['supervisor_signed_by_status']); ?>)
+                                <?php endif; ?>
+                                <?php if (!empty($editing['supervisor_signed_at'])): ?>
+                                    · <?php echo htmlspecialchars(date('d M Y', strtotime($editing['supervisor_signed_at']))); ?>
+                                <?php endif; ?>
+                            </p>
+                        <?php else: ?>
+                            <p class="muted">Awaiting your on-the-job supervisor — they'll receive a secure link to add remarks.</p>
                         <?php endif; ?>
                     </div>
-                    <p style="color: #475569; line-height: 1.6; font-size: 0.95rem;">
-                        <?php echo nl2br(htmlspecialchars($log['activities'])); ?>
-                    </p>
-                </div>
-            <?php endforeach; ?>
-        <?php endif; ?>
+                <?php endif; ?>
 
+                <?php if (!$readonly): ?>
+                    <div class="form-actions">
+                        <a href="logbook.php" class="btn btn-ghost">Cancel</a>
+                        <button type="submit" name="save_draft" class="btn btn-ghost">
+                            <i class="fas fa-save"></i>&nbsp; Save Draft
+                        </button>
+                        <button type="submit" name="submit_log" class="btn btn-primary"
+                                onclick="return confirm('Submit this week? Once submitted you cannot edit it.');">
+                            <i class="fas fa-check-circle"></i>&nbsp; Submit Week
+                        </button>
+                    </div>
+                <?php endif; ?>
+            </form>
+        </div>
+    <?php endif; ?>
+
+    <!-- All my entries -->
+    <div class="card" style="margin-top: 25px;">
+        <h3><i class="fas fa-list"></i>&nbsp; All My Weekly Entries</h3>
+        <?php if (empty($all_logs)): ?>
+            <p class="empty">No entries yet.</p>
+        <?php else: ?>
+            <table class="prog-table">
+                <thead>
+                    <tr>
+                        <th>Week</th>
+                        <th>Period</th>
+                        <th>Days</th>
+                        <th>Status</th>
+                        <th>Supervisor</th>
+                        <th class="actions-col"></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <?php foreach ($all_logs as $l): ?>
+                        <tr>
+                            <td><strong>Week <?php echo (int)$l['week_number']; ?></strong></td>
+                            <td>
+                                <?php if ($l['start_date']): ?>
+                                    <?php echo htmlspecialchars(date('d M', strtotime($l['start_date']))); ?>
+                                    – <?php echo htmlspecialchars(date('d M Y', strtotime($l['end_date']))); ?>
+                                <?php else: ?>
+                                    —
+                                <?php endif; ?>
+                            </td>
+                            <td><?php echo (int)$l['day_count']; ?> day<?php echo $l['day_count'] == 1 ? '' : 's'; ?></td>
+                            <td>
+                                <?php if ((int)$l['is_submitted'] === 1): ?>
+                                    <span class="role-badge role-secretary">Submitted</span>
+                                <?php else: ?>
+                                    <span class="role-badge role-archived">Draft</span>
+                                <?php endif; ?>
+                            </td>
+                            <td>
+                                <?php if (!empty($l['supervisor_signed_at'])): ?>
+                                    <span class="role-badge role-student">Signed</span>
+                                <?php else: ?>
+                                    <span class="muted small">— pending —</span>
+                                <?php endif; ?>
+                            </td>
+                            <td class="actions-col">
+                                <a class="btn btn-ghost btn-sm" href="logbook.php?id=<?php echo (int)$l['id']; ?>">
+                                    <i class="fas <?php echo (int)$l['is_submitted'] === 1 ? 'fa-eye' : 'fa-edit'; ?>"></i>
+                                </a>
+                            </td>
+                        </tr>
+                    <?php endforeach; ?>
+                </tbody>
+            </table>
+        <?php endif; ?>
     </div>
+</div>
+
+<script>
+// When the student picks Monday, auto-populate the 5 day dates and the week-ending field.
+const startInput = document.getElementById('week_start');
+const endInput   = document.getElementById('week_end');
+if (startInput) {
+    startInput.addEventListener('change', () => {
+        const v = startInput.value;
+        if (!v) return;
+        const monday = new Date(v + 'T00:00:00');
+        const dayInputs = document.querySelectorAll('.day-date');
+        dayInputs.forEach((el, i) => {
+            const d = new Date(monday);
+            d.setDate(monday.getDate() + i);
+            el.value = d.toISOString().slice(0, 10);
+        });
+        if (endInput && !endInput.value) {
+            const friday = new Date(monday);
+            friday.setDate(monday.getDate() + 4);
+            endInput.value = friday.toISOString().slice(0, 10);
+        }
+    });
+}
+</script>
 </body>
 </html>

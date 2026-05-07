@@ -1,0 +1,135 @@
+/* ============================================================
+   Logbook page  (student/logbook.php, hod/logbook_review.php)
+   ============================================================ */
+
+.log-header {
+    background: #f8fafc;
+    border-left: 4px solid #0D8ABC;
+}
+.log-header .grid-2 {
+    grid-template-columns: 1fr 1fr 1fr;
+    gap: 14px 24px;
+}
+
+.day-table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-top: 6px;
+    font-size: 0.92rem;
+}
+.day-table th {
+    text-align: left;
+    background: #f8fafc;
+    color: #475569;
+    font-weight: 600;
+    padding: 10px 12px;
+    border-bottom: 1px solid #e2e8f0;
+    font-size: 0.78rem;
+    text-transform: uppercase;
+    letter-spacing: 0.4px;
+}
+.day-table tbody th {
+    background: white;
+    color: #1e293b;
+    text-transform: none;
+    font-weight: 700;
+    font-size: 0.92rem;
+    letter-spacing: normal;
+    padding: 12px;
+    vertical-align: top;
+    width: 110px;
+}
+.day-table td {
+    padding: 12px 8px;
+    border-bottom: 1px solid #f1f5f9;
+    vertical-align: top;
+}
+.day-table tbody tr:last-child td,
+.day-table tbody tr:last-child th { border-bottom: none; }
+.day-table input[type="date"],
+.day-table textarea {
+    width: 100%;
+    border: 1px solid #e2e8f0;
+    border-radius: 6px;
+    padding: 8px 10px;
+    font-family: inherit;
+    font-size: 0.92rem;
+    box-sizing: border-box;
+}
+.day-table textarea { resize: vertical; min-height: 50px; }
+.day-table input:focus,
+.day-table textarea:focus {
+    border-color: #0D8ABC;
+    box-shadow: 0 0 0 3px rgba(13,138,188,0.12);
+    outline: none;
+}
+.day-table input:disabled,
+.day-table textarea:disabled {
+    background: #f8fafc;
+    color: #64748b;
+    cursor: not-allowed;
+}
+
+/* ---------- Supervisor's remarks block (read-only on student side) ---------- */
+.sup-block {
+    background: #fef3c7;
+    border: 1px solid #fde68a;
+    border-radius: 8px;
+    padding: 12px 14px;
+    color: #78350f;
+    font-size: 0.92rem;
+}
+.sup-block .muted { color: #92400e; }
+
+/* ---------- HOD review side: timeline of weeks ---------- */
+.review-week {
+    background: white;
+    border: 1px solid #e2e8f0;
+    border-radius: 10px;
+    padding: 18px 20px;
+    margin-bottom: 14px;
+}
+.review-week-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    flex-wrap: wrap;
+    gap: 10px;
+    border-bottom: 1px solid #f1f5f9;
+    padding-bottom: 10px;
+    margin-bottom: 12px;
+}
+.review-week h4 {
+    margin: 0;
+    font-size: 1rem;
+    color: #0f172a;
+}
+.review-day {
+    display: grid;
+    grid-template-columns: 130px 110px 1fr;
+    gap: 10px 14px;
+    padding: 8px 0;
+    border-bottom: 1px dashed #f1f5f9;
+    font-size: 0.92rem;
+}
+.review-day:last-child { border-bottom: none; }
+.review-day strong { color: #1e293b; }
+.review-day .muted  { color: #64748b; font-size: 0.85rem; }
+
+.remark-block {
+    margin-top: 12px;
+    padding: 10px 12px;
+    border-radius: 6px;
+    font-size: 0.9rem;
+}
+.remark-block .who {
+    font-weight: 700;
+    color: #475569;
+    font-size: 0.78rem;
+    text-transform: uppercase;
+    letter-spacing: 0.3px;
+    margin-bottom: 4px;
+}
+.remark-student     { background: #eff6ff; color: #1e3a8a; }
+.remark-supervisor  { background: #fef3c7; color: #78350f; }
+.remark-department  { background: #f0fdf4; color: #166534; }

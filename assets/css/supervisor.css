@@ -1,0 +1,97 @@
+/* ============================================================
+   Supervisor portal  (supervisor.php, supervisor_evaluation.php)
+   No sidebar — the on-the-job supervisor doesn't have an account.
+   ============================================================ */
+
+.sup-body { background: #eef2f7; }
+
+.sup-shell {
+    max-width: 900px;
+    margin: 24px auto;
+    padding: 0 16px 60px;
+}
+
+.sup-banner {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    padding: 16px 22px;
+    background: linear-gradient(135deg, #0D8ABC 0%, #075f81 100%);
+    color: white;
+    border-radius: 12px 12px 0 0;
+    margin-bottom: 20px;
+}
+.sup-banner img {
+    width: 44px; height: 44px;
+    border-radius: 8px;
+    background: white;
+    padding: 4px;
+}
+.sup-banner strong { font-size: 1rem; }
+.sup-banner .muted { color: rgba(255,255,255,0.85); }
+
+.sup-context {
+    border-left: 4px solid #0D8ABC;
+}
+.sup-context .grid-2 {
+    grid-template-columns: 1fr 1fr 1fr;
+    gap: 14px 20px;
+}
+
+/* ---------- Per-week supervisor remarks block ---------- */
+.sup-remarks-form {
+    margin-top: 14px;
+    padding: 14px;
+    border-top: 2px dashed #fde68a;
+    background: #fffbeb;
+    border-radius: 0 0 8px 8px;
+}
+.sup-remarks-form h5 {
+    margin: 0 0 8px;
+    font-size: 0.78rem;
+    color: #78350f;
+    text-transform: uppercase;
+    letter-spacing: 0.4px;
+}
+.sup-remarks-form textarea {
+    width: 100%;
+    border: 1px solid #fde68a;
+    border-radius: 6px;
+    padding: 10px 12px;
+    font-family: inherit;
+    font-size: 0.92rem;
+    box-sizing: border-box;
+}
+.sup-remarks-form textarea:focus {
+    border-color: #d97706;
+    box-shadow: 0 0 0 3px rgba(217,119,6,0.15);
+    outline: none;
+}
+
+.sup-eval-card {
+    border-left: 4px solid #16a34a;
+    background: #f0fdf4;
+}
+
+/* ---------- Supervisor link card on the student's placement page ---------- */
+.supervisor-link-card { border-left: 4px solid #0D8ABC; }
+.link-row {
+    display: flex;
+    gap: 8px;
+    align-items: stretch;
+}
+.link-row input {
+    flex: 1;
+    padding: 10px 12px;
+    border: 1px solid #e2e8f0;
+    border-radius: 6px;
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 0.85rem;
+    background: #f8fafc;
+    color: #475569;
+    transition: 0.2s;
+}
+
+@media (max-width: 720px) {
+    .sup-context .grid-2 { grid-template-columns: 1fr; }
+}

@@ -108,6 +108,52 @@ function current_academic_year(PDO $pdo): ?array {
 }
 
 /**
+ * Generate a fresh supervisor token (64 hex chars, ~256 bits of entropy).
+ * Used to give the on-the-job supervisor access to a placement without
+ * an account.
+ */
+function generate_supervisor_token(): string {
+    return bin2hex(random_bytes(32));
+}
+
+/**
+ * Resolve a supervisor token to its placement row. Returns null if
+ * the token is unknown or expired.
+ */
+function placement_by_supervisor_token(PDO $pdo, string $token): ?array {
+    if ($token === '') return null;
+    $stmt = $pdo->prepare("
+        SELECT p.*,
+               u.full_name AS student_name, u.index_number, u.program, u.department,
+               y.name AS academic_year_name
+        FROM placements p
+        JOIN users u ON u.id = p.student_id
+        LEFT JOIN academic_years y ON y.id = p.academic_year_id
+        WHERE p.supervisor_token = ?
+          AND (p.supervisor_token_expires_at IS NULL
+               OR p.supervisor_token_expires_at > NOW())
+        LIMIT 1
+    ");
+    $stmt->execute([$token]);
+    return $stmt->fetch(PDO::FETCH_ASSOC) ?: null;
+}
+
+/**
+ * Issue a fresh supervisor token for a placement. 60-day expiry by default.
+ * Safe to call repeatedly (rotates the token).
+ */
+function issue_supervisor_token(PDO $pdo, int $placement_id, int $days = 60): string {
+    $token = generate_supervisor_token();
+    $pdo->prepare("
+        UPDATE placements
+        SET supervisor_token = ?,
+            supervisor_token_expires_at = DATE_ADD(NOW(), INTERVAL ? DAY)
+        WHERE id = ?
+    ")->execute([$token, $days, $placement_id]);
+    return $token;
+}
+
+/**
  * Given a date (Y-m-d), find which semester of the current
  * academic year it falls within. Returns the semester row or null.
  */

@@ -97,6 +97,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['save_placement'])) {
                     $cur_year ? (int)$cur_year['id'] : null,
                     $semester ? (int)$semester['id'] : null,
                 ]);
+                $new_id = (int)$pdo->lastInsertId();
+                // Issue the supervisor's secure-link token (60-day expiry).
+                issue_supervisor_token($pdo, $new_id, 60);
                 header("Location: placement.php?msg=created");
                 exit;
             }
@@ -108,8 +111,22 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['save_placement'])) {
     if ($err) $flash = ['type' => 'error', 'msg' => $err];
 }
 
-if (($_GET['msg'] ?? '') === 'created') $flash = ['type' => 'success', 'msg' => 'Placement registered. Your weekly logs and final evaluation will attach to this record.'];
-if (($_GET['msg'] ?? '') === 'updated') $flash = ['type' => 'success', 'msg' => 'Placement updated.'];
+// Regenerate the supervisor token (e.g. if it was lost or expired).
+if (isset($_GET['regen_token']) && $placement) {
+    issue_supervisor_token($pdo, (int)$placement['id'], 60);
+    header("Location: placement.php?msg=token_regenerated");
+    exit;
+}
+
+if (($_GET['msg'] ?? '') === 'created')          $flash = ['type' => 'success', 'msg' => 'Placement registered. A secure link has been generated for your on-the-job supervisor (see below).'];
+if (($_GET['msg'] ?? '') === 'updated')          $flash = ['type' => 'success', 'msg' => 'Placement updated.'];
+if (($_GET['msg'] ?? '') === 'token_regenerated') $flash = ['type' => 'success', 'msg' => 'New supervisor link generated. The previous one no longer works.'];
+
+// Refresh placement to pick up the freshly-issued token.
+if ($placement) {
+    $placementStmt->execute([$student_id]);
+    $placement = $placementStmt->fetch(PDO::FETCH_ASSOC) ?: null;
+}
 
 // Pre-fill values: existing placement first, fall back to last approved request's dates.
 $pre = [
@@ -262,6 +279,52 @@ $has_approved_letter = $last_request && $last_request['status'] === 'approved';
                 </div>
             </div>
         </div>
+
+        <?php
+            $sup_url = !empty($placement['supervisor_token'])
+                ? BASE_URL . 'supervisor.php?t=' . $placement['supervisor_token']
+                : null;
+            $expires = !empty($placement['supervisor_token_expires_at'])
+                ? date('d M Y', strtotime($placement['supervisor_token_expires_at']))
+                : null;
+        ?>
+        <div class="card supervisor-link-card" style="margin-top: 18px;">
+            <h3><i class="fas fa-link"></i>&nbsp; Supervisor's Secure Link</h3>
+            <p class="muted">
+                Send this URL to your on-the-job supervisor (<?php echo htmlspecialchars($placement['supervisor_email']); ?>).
+                It lets them review your weekly logs, add their remarks, and complete the final evaluation —
+                no account needed.
+            </p>
+            <?php if ($sup_url): ?>
+                <div class="link-row">
+                    <input type="text" id="sup_url" value="<?php echo htmlspecialchars($sup_url); ?>" readonly>
+                    <button type="button" class="btn btn-primary btn-sm" onclick="copySupervisorLink()">
+                        <i class="fas fa-copy"></i>&nbsp; Copy
+                    </button>
+                </div>
+                <div class="muted small" style="margin-top: 8px;">
+                    Expires <?php echo htmlspecialchars($expires ?? '—'); ?>.
+                    <a href="?regen_token=1" onclick="return confirm('Generate a new link? The old one will stop working.');">Regenerate</a>
+                </div>
+            <?php else: ?>
+                <p>No supervisor link yet.
+                    <a href="?regen_token=1" class="btn btn-ghost btn-sm">
+                        <i class="fas fa-sync-alt"></i>&nbsp; Generate link
+                    </a>
+                </p>
+            <?php endif; ?>
+        </div>
+
+        <script>
+        function copySupervisorLink() {
+            const el = document.getElementById('sup_url');
+            el.select(); el.setSelectionRange(0, 99999);
+            navigator.clipboard.writeText(el.value).then(() => {
+                el.style.background = '#dcfce7';
+                setTimeout(() => el.style.background = '', 1500);
+            });
+        }
+        </script>
     <?php endif; ?>
 </div>
 </body>

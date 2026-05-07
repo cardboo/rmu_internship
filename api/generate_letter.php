@@ -22,8 +22,6 @@ $request_id = $_GET['id'] ?? null;
 //   1. prefer not archived,
 //   2. prefer one with an uploaded signature,
 //   3. then most recently created.
-// This avoids the bug where two HODs exist for the same department
-// and the join would arbitrarily pick the wrong one.
 try {
     $stmt = $pdo->prepare("
         SELECT r.*, u.full_name, u.index_number, u.department, u.program,
@@ -52,8 +50,79 @@ if (empty($data['hod_name'])) {
     die("No active HOD assigned to the " . htmlspecialchars($data['department'] ?? '') . " department. Ask the admin to assign one before generating letters.");
 }
 
+// 4. Resolve dept / academic year / semester for the template lookup.
+$dept_id_stmt = $pdo->prepare("SELECT id FROM departments WHERE name = ? LIMIT 1");
+$dept_id_stmt->execute([$data['department']]);
+$dept_id = $dept_id_stmt->fetchColumn() ?: null;
+
+$year_id  = !empty($data['academic_year_id']) ? (int)$data['academic_year_id'] : null;
+$year_row = null;
+$sem_row  = null;
+if ($year_id) {
+    $yStmt = $pdo->prepare("SELECT * FROM academic_years WHERE id = ?");
+    $yStmt->execute([$year_id]);
+    $year_row = $yStmt->fetch(PDO::FETCH_ASSOC) ?: null;
+}
+if (!empty($data['start_date'])) {
+    $sem_row = semester_for_date($pdo, $data['start_date']);
+}
+
+// 5. Fetch the most-specific letter template that matches.
+//    Order: dept+year+sem > dept+year > dept > default.
+$tplStmt = $pdo->prepare("
+    SELECT * FROM letter_templates
+    WHERE (department_id    = ? OR department_id    IS NULL)
+      AND (academic_year_id = ? OR academic_year_id IS NULL)
+      AND (semester_id      = ? OR semester_id      IS NULL)
+    ORDER BY (department_id    IS NOT NULL) DESC,
+             (academic_year_id IS NOT NULL) DESC,
+             (semester_id      IS NOT NULL) DESC,
+             id ASC
+    LIMIT 1
+");
+$tplStmt->execute([
+    $dept_id,
+    $year_id,
+    $sem_row ? (int)$sem_row['id'] : null,
+]);
+$template = $tplStmt->fetch(PDO::FETCH_ASSOC) ?: null;
+
+// Fallback if migration 011 hasn't run or no template at all.
+$template_body = $template['body'] ?? "We wish to introduce the above-named student who is currently pursuing a program in {student_program} at this University. As part of the requirements for the award of a degree, students are required to undergo a {weeks}-week industrial attachment to gain practical experience.\n\nWe would be grateful if you could offer the student the opportunity to train with your organization from {start_date} to {end_date}.\n\nWe look forward to a favorable response from you.";
+
 // Check if the user specifically chose a generic letter
-$is_twimc = (strtolower(trim($data['company_name'])) == 'to whom it may concern');
+$is_twimc = (strtolower(trim($data['company_name'] ?? '')) == 'to whom it may concern');
+
+// Compute date / week values used by the placeholders.
+$start_fmt = !empty($data['start_date']) ? date('jS M Y', strtotime($data['start_date'])) : '________';
+$end_fmt   = !empty($data['end_date'])   ? date('jS M Y', strtotime($data['end_date']))   : '________';
+$weeks = 0;
+if (!empty($data['start_date']) && !empty($data['end_date'])) {
+    $d1 = new DateTime($data['start_date']);
+    $d2 = new DateTime($data['end_date']);
+    $weeks = floor($d1->diff($d2)->days / 7);
+}
+
+// Substitute placeholders.
+$replacements = [
+    '{student_name}'    => $data['full_name']        ?? '',
+    '{student_index}'   => $data['index_number']     ?? '',
+    '{student_program}' => $data['program']          ?? '',
+    '{department}'      => $data['department']       ?? '',
+    '{company_name}'    => $data['company_name']     ?? '',
+    '{company_address}' => $data['company_address']  ?? '',
+    '{start_date}'      => $start_fmt,
+    '{end_date}'        => $end_fmt,
+    '{weeks}'           => (string)$weeks,
+    '{hod_name}'        => $data['hod_name']         ?? '',
+    '{hod_title}'       => $data['job_title']        ?? '',
+    '{academic_year}'   => $year_row['name']         ?? '',
+    '{semester}'        => $sem_row['label']         ?? '',
+    '{date}'            => date('jS F, Y'),
+];
+$rendered_body = strtr($template_body, $replacements);
+// Allow real newlines in the template body (stored as the literal "\n" sequence in seed).
+$rendered_body = str_replace(["\\n", "\r\n"], ["\n", "\n"], $rendered_body);
 
 $pdf = new FPDF();
 $pdf->AddPage();
@@ -71,7 +140,7 @@ $pdf->SetFont('Arial', '', 11);
 $pdf->Cell(0, 10, 'Date: ' . date('jS F, Y'), 0, 1, 'L');
 $pdf->Ln(5);
 
-// --- Recipient Block (Manual Dashes) ---
+// --- Recipient Block ---
 $pdf->SetFont('Arial', '', 11);
 if ($is_twimc) {
     $pdf->Cell(0, 7, '________________________________________', 0, 1, 'L');
@@ -93,27 +162,13 @@ $pdf->SetFont('Arial', 'B', 11);
 $pdf->Cell(0, 10, 'RE: INDUSTRIAL ATTACHMENT FOR ' . strtoupper($data['full_name']), 0, 1, 'L');
 $pdf->Ln(5);
 
-// --- Body ---
+// --- Body (from template, paragraph-by-paragraph) ---
 $pdf->SetFont('Arial', '', 11);
-$start = date('jS M Y', strtotime($data['start_date']));
-$end = date('jS M Y', strtotime($data['end_date']));
-
-$d1 = new DateTime($data['start_date']);
-$d2 = new DateTime($data['end_date']);
-$weeks = floor($d1->diff($d2)->days / 7);
-
-$text = "We wish to introduce the above-named student who is currently pursuing a program in " . $data['program'] . " at this University. ";
-$text .= "As part of the requirements for the award of a degree, students are required to undergo a " . $weeks . "-week industrial attachment to gain practical experience.";
-
-$pdf->MultiCell(0, 7, $text);
-$pdf->Ln(5);
-
-$text2 = "We would be grateful if you could offer the student the opportunity to train with your organization from " . $start . " to " . $end . ".";
-$pdf->MultiCell(0, 7, $text2);
-$pdf->Ln(10);
-
-$pdf->Cell(0, 7, "We look forward to a favorable response from you.", 0, 1);
-$pdf->Ln(5);
+foreach (preg_split('/\n\s*\n/', trim($rendered_body)) as $para) {
+    $pdf->MultiCell(0, 7, trim($para));
+    $pdf->Ln(4);
+}
+$pdf->Ln(4);
 $pdf->Cell(0, 7, "Yours faithfully,", 0, 1);
 $pdf->Ln(10);
 

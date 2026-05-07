@@ -81,6 +81,9 @@ if (!function_exists('nav_active')) {
             <a href="<?php echo url('admin/academic_calendar.php'); ?>" class="<?php echo nav_active('admin/academic_calendar.php', $current_path); ?>">
                 <i class="fas fa-calendar-alt"></i>&nbsp;&nbsp;Academic Calendar
             </a>
+            <a href="<?php echo url('admin/letter_templates.php'); ?>" class="<?php echo nav_active('admin/letter_templates.php', $current_path); ?>">
+                <i class="fas fa-file-alt"></i>&nbsp;&nbsp;Letter Templates
+            </a>
             <a href="<?php echo url('admin/bulk_upload.php'); ?>" class="<?php echo nav_active('admin/bulk_upload.php', $current_path); ?>">
                 <i class="fas fa-upload"></i>&nbsp;&nbsp;Bulk Upload
             </a>

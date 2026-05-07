@@ -7,6 +7,14 @@ require __DIR__ . '/includes/db.php';
 $token = trim($_GET['t'] ?? '');
 $placement = $token !== '' ? placement_by_supervisor_token($pdo, $token) : null;
 
+// Existing evaluation (if any) so the CTA can flip to a "view" button.
+$evaluation = null;
+if ($placement) {
+    $evStmt = $pdo->prepare("SELECT * FROM evaluations WHERE placement_id = ?");
+    $evStmt->execute([(int)$placement['id']]);
+    $evaluation = $evStmt->fetch(PDO::FETCH_ASSOC) ?: null;
+}
+
 // ----------------------------------------------------------------------
 // POST: add / update supervisor's remarks for a specific week.
 // ----------------------------------------------------------------------
@@ -193,17 +201,27 @@ if ($placement) {
                 <?php endforeach; endif; ?>
             </div>
 
-            <!-- Final evaluation CTA -->
+            <!-- Final evaluation CTA / status -->
             <div class="card sup-eval-card" style="margin-top: 18px;">
                 <h3><i class="fas fa-clipboard-check"></i>&nbsp; Final Evaluation</h3>
-                <p class="muted">At the end of the attachment, complete the final assessment to grade the student's overall performance.</p>
-                <a href="<?php echo BASE_URL; ?>supervisor_evaluation.php?t=<?php echo urlencode($token); ?>"
-                   class="btn btn-primary">
-                    <i class="fas fa-arrow-right"></i>&nbsp; Open Evaluation Form
-                </a>
-                <p class="muted small" style="margin-top: 10px;">
-                    The form mirrors the official RMU evaluation sheet — 8 criteria, 50 marks total.
-                </p>
+                <?php if ($evaluation): ?>
+                    <p>You submitted the evaluation on
+                        <strong><?php echo htmlspecialchars(date('d M Y', strtotime($evaluation['submitted_at']))); ?></strong>.
+                        Final score: <strong><?php echo (int)$evaluation['total_score']; ?> / 50</strong>.</p>
+                    <a href="<?php echo BASE_URL; ?>supervisor_evaluation.php?t=<?php echo urlencode($token); ?>"
+                       class="btn btn-ghost">
+                        <i class="fas fa-eye"></i>&nbsp; View Submitted Evaluation
+                    </a>
+                <?php else: ?>
+                    <p class="muted">At the end of the attachment, complete the final assessment to grade the student's overall performance.</p>
+                    <a href="<?php echo BASE_URL; ?>supervisor_evaluation.php?t=<?php echo urlencode($token); ?>"
+                       class="btn btn-primary">
+                        <i class="fas fa-arrow-right"></i>&nbsp; Open Evaluation Form
+                    </a>
+                    <p class="muted small" style="margin-top: 10px;">
+                        The form mirrors the official RMU evaluation sheet — 8 criteria, 50 marks total.
+                    </p>
+                <?php endif; ?>
             </div>
 
         <?php endif; ?>

@@ -63,6 +63,15 @@ $has_approved_letter = false;
 foreach ($my_requests as $r) {
     if ($r['status'] === 'approved') { $has_approved_letter = true; break; }
 }
+
+// Final evaluation (if the supervisor has submitted one for the
+// current placement).
+$evaluation = null;
+if ($placement) {
+    $evStmt = $pdo->prepare("SELECT * FROM evaluations WHERE placement_id = ?");
+    $evStmt->execute([(int)$placement['id']]);
+    $evaluation = $evStmt->fetch(PDO::FETCH_ASSOC) ?: null;
+}
 ?>
 
 <!DOCTYPE html>
@@ -74,6 +83,7 @@ foreach ($my_requests as $r) {
     <link rel="stylesheet" href="<?php echo asset('css/style.css'); ?>">
     <link rel="stylesheet" href="<?php echo asset('css/layout.css'); ?>">
     <link rel="stylesheet" href="<?php echo asset('css/student.css'); ?>">
+    <link rel="stylesheet" href="<?php echo asset('css/evaluation.css'); ?>">
     <style>
         .form-card { background: white; padding: 25px; border-radius: 12px; margin-bottom: 30px; box-shadow: 0 4px 6px rgba(0,0,0,0.05); }
         .toggle-container { display: flex; align-items: center; margin-bottom: 20px; background: #f1f5f9; padding: 10px; border-radius: 8px; }
@@ -217,6 +227,34 @@ foreach ($my_requests as $r) {
                 <p class="muted">Submit a letter request above and wait for HOD approval. Once approved, you'll be able to register your placement here.</p>
             <?php endif; ?>
         </div>
+
+        <?php if ($evaluation): ?>
+            <div class="eval-mini">
+                <div>
+                    <div class="muted small" style="text-transform: uppercase; letter-spacing: 0.4px; font-weight: 700;">
+                        Final Supervisor Evaluation
+                    </div>
+                    <div class="eval-mini-score">
+                        <?php echo (int)$evaluation['total_score']; ?> <small>/ 50</small>
+                    </div>
+                    <div class="muted small">
+                        Submitted <?php echo htmlspecialchars(date('d M Y', strtotime($evaluation['submitted_at']))); ?>
+                        by <?php echo htmlspecialchars($evaluation['supervisor_name']); ?>
+                    </div>
+                </div>
+                <div>
+                    <span class="status-badge approved">Completed</span>
+                </div>
+            </div>
+        <?php elseif ($placement): ?>
+            <div class="placement-card no-placement" style="margin-top: 18px;">
+                <div class="placement-card-head">
+                    <h2><i class="fas fa-clipboard-check"></i>&nbsp; Final Evaluation</h2>
+                    <span class="status-badge pending">Pending</span>
+                </div>
+                <p class="muted">At the end of your attachment, your on-the-job supervisor will receive a secure link to submit the final evaluation. The score will appear here once they're done.</p>
+            </div>
+        <?php endif; ?>
     </div>
 
     <script>

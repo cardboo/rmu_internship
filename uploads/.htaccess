@@ -1,0 +1,13 @@
+# uploads/ holds user-uploaded files (logbook proofs, profile pics in
+# their old format if any, performance scans). Files should be
+# downloadable, but PHP / phtml / phar should NEVER execute here —
+# otherwise an upload could become a remote-code-execution vector.
+<FilesMatch "\.(php|phtml|phar)$">
+    <IfModule mod_authz_core.c>
+        Require all denied
+    </IfModule>
+    <IfModule !mod_authz_core.c>
+        Order deny,allow
+        Deny from all
+    </IfModule>
+</FilesMatch>

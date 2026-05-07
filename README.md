@@ -1,13 +1,26 @@
 # RMU Internship & Attachment Portal
 
 A web portal for **Regional Maritime University** that coordinates the
-industrial attachment lifecycle: from student request → departmental
-approval → official letter generation → weekly logbook submission →
-final evidence and grading.
+industrial attachment lifecycle:
 
-This is the **v2 working branch** (`claude/review-internship-tracker-v2-6euYr`).
-v1 was a flat single-folder script-set; v2 is a role-organised, vanilla
-PHP 8 / MySQL application.
+```
+  letter request  →  HOD approval  →  official PDF letter
+                                    ↓
+  student finds a company offline
+                                    ↓
+  placement registered on the system  →  supervisor gets a secure link
+                                    ↓
+  weekly logbooks (digital)  →  supervisor adds remarks per week
+                                    ↓
+  final supervisor evaluation (digital, scored 0–50)
+                                    ↓
+  result visible to student (read-only) + HOD
+```
+
+This branch (`claude/review-internship-tracker-v2-6euYr`) is the
+**v2 implementation**. v1 was a flat single-folder script-set; v2
+is a role-organised, vanilla PHP 8 / MySQL application with no
+Composer / framework dependency.
 
 ---
 
@@ -19,122 +32,104 @@ PHP 8 / MySQL application.
 | DB | MariaDB 10.4+ / MySQL 8 (named `internship_system`) |
 | Server | WAMP (dev) / any LAMP-style host (prod) |
 | Frontend | HTML, CSS, plain JS — no build step |
-| PDFs | FPDF (vendored at `lib/fpdf.php`) |
-| Auth | session cookies + `password_hash()` |
+| PDF | FPDF (vendored at `lib/fpdf.php`) |
+| Email | Hand-rolled minimal SMTP client at `lib/Mailer.php` (~250 LOC, supports STARTTLS / SSL / AUTH LOGIN) |
+| Auth | Session cookies + `password_hash()` |
 
 ---
 
-## 2. User roles & seed numbers
+## 2. User roles
 
-The seed dump (`internship_system.sql`) ships with **61 user accounts**:
-
-| Role | Count | Purpose |
+| Role | Count in seed | Responsibilities |
 |---|---:|---|
-| **Admin** | 1 | Manages users, departments, programs, registry, settings |
-| **HOD** (Head of Department) | 8 | Approves attachment requests, signs letters, reviews logbooks |
-| **Secretary** | 7 *(after migration 002)* | Per-department approvals on behalf of HOD |
-| **Student** | 45 | Submits requests, weekly logbooks, final evidence |
-
-> Six secretary rows shipped with `role=''` and could not log in.
-> **Migration 002** backfills `role='secretary'` for them.
-
-After running migrations 001–005 you also get:
-
-- **7 departments** (ICT, Marine Engineering, Nautical Science, Transport,
-  Electrical, Mechanical, Accounting)
-- **8 programmes** (e.g. BSc. Information Technology under ICT,
-  BSc. Marine Engineering, BSc. Computer Science, etc.)
-- **11 job-titles** (HOD, Acting HOD, Department Secretary, Senior Lecturer, …)
-- **A backfilled student registry** containing every student account that has
-  a valid index number and recognisable dept/programme.
+| **Admin** | 1 | Manages users, departments, programs, registry, academic calendar, letter templates, email settings |
+| **HOD** (Head of Department) | 8 | Approves attachment requests, signs official letters, reviews logbooks |
+| **Secretary** | 7 | Per-department approvals on behalf of HOD; registers students from the registry roster |
+| **Student** | 45 | Requests letter, registers placement, files weekly logbooks |
+| **Industry supervisor** | n/a | NO account — token-gated portal at `supervisor.php?t=…` (60-day validity). Adds weekly remarks + submits the final evaluation |
 
 ---
 
 ## 3. Repository layout
 
 ```
-/                          login (index.php), logout.php, change_password.php
+/                          login (index.php), logout.php, register.php,
+                           change_password.php, supervisor.php,
+                           supervisor_evaluation.php
 /admin/                    dashboard, users, edit_user, add_user,
-                           registry, programs, bulk_upload, settings, profile
+                           registry, programs, academic_calendar,
+                           letter_templates, email_settings,
+                           settings, profile
 /hod/                      dashboard, profile, logbook_review
-/secretary/                dashboard
-/student/                  dashboard, profile, logbook, docs, submit_evidence
-/api/                      generate_letter (PDF), download_template,
-                           download_registry_template, process_request
-/includes/                 db.php, auth.php, sidebar.php
-/lib/                      fpdf.php + font/
+/secretary/                dashboard, register_student
+/student/                  dashboard, profile, placement, logbook
+/api/                      generate_letter, registry_lookup,
+                           download_registry_template,
+                           process_request
+/includes/                 db.php, auth.php, sidebar.php, email.php
+                           + .htaccess (deny direct web access)
+/lib/                      fpdf.php + font/, Mailer.php
+                           + .htaccess (deny direct web access)
 /assets/css/               style.css, login.css, layout.css,
-                           registry.css, programs.css, auth.css
+                           registry.css, programs.css, users.css,
+                           dashboards.css, calendar.css, student.css,
+                           logbook.css, supervisor.css, evaluation.css,
+                           letter_templates.css, email.css, auth.css
 /assets/images/            logo, login art, profiles/, signatures/
 /assets/js/                main.js
-/templates/                weekly_log_template.pdf,
-                           final_evaluation_form.pdf,
-                           student_import_template.csv
-/uploads/                  logbooks/, evidence/   (gitignored at runtime)
-/migrations/               001 … 005 SQL files (run in order)
-/tools/                    generate_hash, reset (dev-only)
-internship_system.sql      one-shot seed for v1 schema + sample data
+/templates/                student_import_template.csv
+/uploads/                  logbooks/, evidence/  (gitignored at runtime;
+                           PHP execution disabled via .htaccess)
+/migrations/               001 … 012 SQL files (run in order)
+                           + .htaccess (deny direct web access)
+/tools/                    generate_hash, reset (dev-only,
+                           .htaccess deny — never ship to prod)
+internship_system.sql      one-shot v1 schema + seed data
 ```
 
 `includes/db.php` auto-detects `BASE_URL` from `$_SERVER['SCRIPT_NAME']`,
-so the app works at both `/` and `/rmu_internship/` without config.
+so the app works at `/` and at `/rmu_internship/` without configuration.
 
 ---
 
-## 4. The four user flows
+## 4. The end-to-end flow
 
-### Admin
-1. Logs in at `/index.php`.
-2. **Manages users** (`admin/users.php`) — view, edit, delete *(archive in upcoming sprint)*.
-3. **Manages registry** (`admin/registry.php`) — uploads CSV from the registry
-   office, downloads a template, or adds students one by one. Department
-   ⇒ programme dropdown auto-filters.
-4. **Manages programmes & departments** (`admin/programs.php`) — full CRUD
-   with safe-delete (won't drop a row that's still referenced).
-5. **Global search** (`admin/dashboard.php`) — filter all attachment requests
-   by name/index, department, status.
-6. **Generates letters** for any approved request.
-
-### HOD
-1. Lands on `hod/dashboard.php` showing only their department's requests.
-2. Must upload a **digital signature** (PNG, ideally transparent) once via
-   `hod/profile.php` before approvals are unlocked.
-3. **Approves / rejects** student attachment requests — rejections require a reason.
-4. Generates the official PDF letter (filename + signature embedded).
-5. Reviews student weekly logbooks (`hod/logbook_review.php`).
-
-### Secretary
-1. Lands on `secretary/dashboard.php` for their department only.
-2. Sees pending attachment requests.
-3. Can approve **only if** their department's HOD has uploaded a signature
-   (the secretary acts on behalf of the HOD).
-4. Generates letters for approved requests.
-
-### Student
-1. Logs in. If their account was created with a temporary password
-   (`must_change_password=1`), they're forced through `change_password.php`
-   before any other page renders.
-2. Submits an attachment request from the dashboard.
-3. Uploads **weekly logbooks** at `student/logbook.php` — date inputs
-   block past dates and validate server-side.
-4. Uploads **final evidence** (signed performance sheet) at
-   `student/submit_evidence.php`.
-5. Downloads provided templates from `student/docs.php`.
+| Stage | Page | Who acts |
+|---|---|---|
+| 1. Setup | `admin/programs.php`, `admin/academic_calendar.php`, `admin/registry.php` | Admin (once) |
+| 2. Account creation | `register.php` (self-serve) / `secretary/register_student.php` / `admin/add_user.php` | Student, secretary, or admin |
+| 3. First login | `change_password.php` | Student (forced if temp pw) |
+| 4. Letter request | `student/dashboard.php` | Student |
+| 5. Approval | `hod/dashboard.php` / `secretary/dashboard.php` | HOD or secretary |
+| 6. Letter PDF | `api/generate_letter.php` | HOD / secretary / admin |
+| 7. Placement registration | `student/placement.php` | Student (after securing a host) |
+| 8. Weekly logs | `student/logbook.php` | Student |
+| 9. Supervisor remarks | `supervisor.php?t=TOKEN` | On-the-job supervisor (no account) |
+| 10. HOD review | `hod/logbook_review.php` | HOD / secretary |
+| 11. Final evaluation | `supervisor_evaluation.php?t=TOKEN` | On-the-job supervisor |
+| 12. Score read-only | student dashboard, HOD review | Student, HOD |
 
 ---
 
 ## 5. Migrations
 
-Each migration is **idempotent** and **safe to re-run**. Apply them in
-order from phpMyAdmin → SQL tab → paste the file → Go.
+Each migration is **idempotent** and **safe to re-run**. Apply them
+in order from phpMyAdmin → SQL → paste → Go.
 
-| File | What it does |
+| File | Purpose |
 |---|---|
-| `001_v2_foundation.sql` | Creates `departments`, `programs`, `student_registry`. Seeds 7 depts and 8 programmes from existing data. |
-| `002_fix_secretary_roles.sql` | Backfills `role='secretary'` for the 6 seed rows that shipped with empty role and couldn't log in. |
-| `003_v2_user_admin.sql` | Adds `users.must_change_password`, `users.is_archived`, `users.archived_at`. Creates `job_titles` table seeded with 11 standard titles. |
-| `004_consolidate_profile_pic.sql` | Collapses two parallel columns (`profile_pic` + `profile_path`) into one and drops the `'default.png'` sentinel that was 404-ing in sidebars. |
-| `005_backfill_student_registry.sql` | Populates `student_registry` from existing student accounts. Reports any user rows that couldn't be auto-mapped to a dept/programme. |
+| `001_v2_foundation.sql` | `departments`, `programs`, `student_registry` |
+| `002_fix_secretary_roles.sql` | Backfill `role='secretary'` for the 6 seeded rows that shipped with empty role |
+| `003_v2_user_admin.sql` | `users.must_change_password`, `is_archived`, `archived_at`; `job_titles` table |
+| `004_consolidate_profile_pic.sql` | Collapse `profile_pic` and `profile_path` columns; drop the `'default.png'` sentinel |
+| `005_backfill_student_registry.sql` | Populate `student_registry` from existing `users` (best-effort) |
+| `006_registry_email_and_domain_fix.sql` | `student_registry.email` column + fix the `@st.edu.rmu.gh` typo to `@st.rmu.edu.gh` |
+| `007_academic_calendar.sql` | `academic_years` + `semesters`; tag existing dated rows |
+| `008_placements.sql` | New `placements` table (company + supervisor + period + token) |
+| `009_logbook_digital.sql` | Extend `logbooks` for the digital flow + new `logbook_days` child table |
+| `010_evaluations.sql` | Final evaluation results (8 criteria, 50 marks) |
+| `011_letter_templates.sql` | `letter_templates` per dept / year / semester |
+| `012_email_settings.sql` | SMTP config for transactional notifications |
 
 ---
 
@@ -150,26 +145,35 @@ git checkout claude/review-internship-tracker-v2-6euYr
 mysql -u root -e "CREATE DATABASE internship_system DEFAULT CHARSET utf8mb4;"
 mysql -u root internship_system < internship_system.sql
 
-# 3. Apply the v2 migrations (in order)
-mysql -u root internship_system < migrations/001_v2_foundation.sql
-mysql -u root internship_system < migrations/002_fix_secretary_roles.sql
-mysql -u root internship_system < migrations/003_v2_user_admin.sql
-mysql -u root internship_system < migrations/004_consolidate_profile_pic.sql
-mysql -u root internship_system < migrations/005_backfill_student_registry.sql
+# 3. Apply the v2 migrations in order (001 → 012)
+for m in migrations/*.sql; do mysql -u root internship_system < "$m"; done
 
 # 4. Drop the project into your web root (e.g. C:\wamp64\www\rmu_internship)
 # 5. Visit http://localhost/rmu_internship/
 ```
 
-DB credentials live at the top of `includes/db.php`. Update `$user`/`$pass`
-for production. (Move to a real `.env` is on the v3 list.)
+DB credentials live at the top of `includes/db.php`.
+
+### Email setup (optional but recommended)
+
+For local dev, install [**Mailpit**](https://github.com/axllent/mailpit)
+— a single Windows binary that catches every outgoing email on
+`localhost:1025` and shows them at `http://localhost:8025`. The
+default settings in `Admin → Email Settings` already point at it.
+Flip "Enabled" to ON, hit **Send Test Email**.
+
+For production, the same settings page accepts real SMTP creds
+(Gmail with an app password, Office 365, RMU's mail server, etc.).
+The transcript pane on the test page surfaces the actual SMTP
+error if a port is firewalled.
 
 ---
 
 ## 7. Test accounts
 
-All seeded users share one bcrypt hash. Use **`tools/reset.php`** to seed
-two known test accounts with password `123456`:
+All seeded users share one bcrypt hash. Use **`tools/reset.php`**
+(CLI only — `.htaccess` blocks web access) to seed two known test
+accounts with password `123456`:
 
 | Role | Email | Password |
 |---|---|---|
@@ -183,117 +187,65 @@ Or pick any from the seed:
 | Admin | `admin@rmu.edu.gh` |
 | HOD ICT | `hod.ict@rmu.edu.gh` |
 | Secretary ICT | `sec.ict@rmu.edu.gh` |
-| Student | `kwame.m@student.rmu.edu.gh` |
+| Student | `kwame.m@st.rmu.edu.gh` |
 
-> **RMU email rule** *(supervisor #7, helper ready, enforcement coming)*:
-> staff must be `@rmu.edu.gh`, students must be `@st.edu.rmu.gh`.
+> **RMU email rule**: staff `@rmu.edu.gh`, students `@st.rmu.edu.gh`.
+> Enforced server-side in `includes/auth.php :: rmu_email_error()`.
 
 ---
 
-## 8. v2 progress vs supervisor's review
+## 8. Sprint history (v2)
 
-| # | Supervisor item | Status |
+| Sprint | What | Key commits |
 |---|---|---|
-| 1 | CSS sprawl | 🟡 Partial — registry / programs / auth pages have dedicated CSS files; older pages still mix inline styles |
-| 2 | Department → programmes auto-filter on user creation | 🟢 Done in registry; pending in `add_user.php` |
-| 3 | Secretary registers students | 🔴 Pending |
-| 4 | Admin can add programmes | ✅ `admin/programs.php` |
-| 5 | Registry table + secretary lookup | ✅ table + admin UI; secretary side pending |
-| 6 | Student self-registration | 🔴 Pending |
-| 7 | Only RMU emails | 🟡 Helper exists in `includes/auth.php`; not yet wired into the user forms |
-| 8 | "Generate temp password" button | 🟡 Helper exists; UI pending |
-| 9 | Newest user shown first | 🔴 Pending (admin/users.php rewrite) |
-| 10 | Search system users | 🔴 Pending (admin/users.php rewrite) |
-| 11 | Secretary roles updated | ✅ migration 002 |
-| 12 | Archive instead of delete | 🟡 column exists; UI pending |
-| 13 | Job-title dropdown | 🟡 table + seed exist; UI pending |
-| 14 | Force-change temp password | ✅ full flow |
-| 15 | No past dates in calendar | ✅ logbook |
-
-Legend: ✅ done · 🟡 partial · 🔴 pending
+| 0 | Restructure / clean-up / sidebar layout / avatars / migrations 001–006 | `f6cf2c4` … `ff44d3d` |
+| 1 | Academic calendar (years + semesters) — migration 007 | `8c15bba` |
+| 2 | Lifecycle split: `placements` table — migration 008 | `f404afe` |
+| 3 | Digital weekly logbook (mirrors PDF) — migration 009 | `26e15ef` |
+| 4 | Token-based supervisor portal | `419769e` |
+| 5 | Final evaluation (8 criteria) — migration 010 | `0220033` |
+| 6 | Letter templates per dept/year/sem — migration 011 | `b694e0f` |
+| 7 | PHPMailer-equivalent SMTP + transactional notifications — migration 012 | `b37b0e8` |
+| 8 | Cleanup: drop deprecated PDF flow + .htaccess hardening | this commit |
 
 ---
 
-## 9. Suggested additions beyond the supervisor list
+## 9. Security posture
 
-These haven't been requested but would round out v2/v3:
+- DB credentials hardcoded in `includes/db.php` (move to env in v3).
+- `bcrypt` for passwords via `password_hash()`.
+- `must_change_password` flag forces temp-password rotation on
+  first login.
+- Email validation enforces RMU domains by role.
+- `.htaccess` denies direct web access to `tools/`, `migrations/`,
+  `includes/`, `lib/`. PHP execution is blocked under `uploads/`
+  to neutralise upload-as-RCE.
+- Supervisor tokens are 64 hex chars (256 bits) with a 60-day
+  expiry, regenerable.
 
-### Tier 1 — high-impact, foundational
-- **Email notifications** — request approved / rejected, logbook commented, weekly reminder, password reset.
-- **Industry-supervisor evaluation** — token-based link emailed to the company supervisor (no account) where they fill in a short evaluation. Currently we have no way to validate the student's logbook reflects reality.
-- **Academic year / cohort tagging** — every request, logbook, submission tagged with `academic_year_id`. Needed before yearly reports can work.
-- **Audit log** — letters are official documents; track who approved/rejected what, when, from which IP.
-- **Letter reference numbers + stored PDFs** — every approved letter gets a serial (`RMU/ICT/INT/2026/0042`) and the generated PDF is *stored*, not regenerated each click. Prevents backdating disputes.
-- **`.htaccess` hardening** — block direct web access to `/uploads`, `/tools`, `/lib`, `/includes`, `/migrations`.
-
-### Tier 2 — reporting & coverage
-- Company / Organisation registry (free-text company names today).
-- HOD/admin reports — placement rate, weeks completed, students still without placement, CSV/PDF export.
-- More document templates — final evaluation, mid-term review, certificate of completion.
-- Comment threads on requests / logbooks (instead of single `rejection_reason` field).
-
-### Tier 3 — quality-of-life
-- Student progress dashboard ("Week 4 of 12 logbooks · evidence pending").
-- Calendar / deadline page tied to the academic year.
-- Mobile responsiveness pass at 360px.
-- Multi-attachment per logbook week.
-- Inline PDF preview on file links.
-- "View as student" mode for admin debugging.
-
-### Tier 4 — security maturity (do before releasing to real students)
-- CSRF tokens on every POST form.
+Still open (queued for v3):
+- CSRF tokens on every POST.
 - Login throttling / lockout.
-- 2FA for staff (HOD, secretary, admin).
+- 2FA for staff.
 - Force HTTPS + security headers.
-- Backup / export tool — admin downloads a zip of all submissions for an academic year.
+- Audit log table.
+- Data backup / yearly export.
 
 ---
 
-## 10. Known data caveats
+## 10. Known caveats
 
-- The seed dump assigns **two HODs to the ICT department** (rows 4 + 11).
-  Migration 005 cannot tell which is "real". The letter-generator now picks
-  the one with a signature; admin should still archive the duplicate.
-- Several student rows have `department='Computer Science'` — this is a
-  programme name, not a department. Migration 005 reports them as
-  unmappable. Fix by editing the user's department to `'ICT'` then
-  re-running 005.
-- `users.profile_path` column is left in place after migration 004 even
-  though it's no longer written. A future migration can drop it.
-- `lib/fpdf.php` is vendored (not pulled via Composer) by design — vanilla
-  stack, no build step.
-
----
-
-## 11. Branch / commit history (v2 high-points)
-
-```
-ba670f5  bug fixes from first round of testing (admin + HOD)
-cbbe47d  force-password-change flow + RMU-email helpers + logbook date guard
-282bb9a  fix avatar 404s — consolidate profile_pic columns
-7de107f  admin Programs & Departments manager + fix empty-role secretaries
-730786a  clean up assets/, relocate templates+uploads, fix file paths
-9159efe  fix sidebar overlap and hide nav items users can't reach
-f6cf2c4  reorganize codebase into role-based folder structure
-10dd689  add Student Registry (CSV upload, template, single entry)
-```
-
----
-
-## 12. Contributing / dev notes
-
-- **Always commit on the v2 branch** (`claude/review-internship-tracker-v2-6euYr`)
-  until v2 is green-lit; only then merge to `main`.
-- **`tools/`** is dev-only. `tools/generate_hash.php` and `tools/reset.php`
-  must not be exposed to production users — protect with `.htaccess`
-  or delete before deploying.
-- New migrations go in `/migrations/NNN_short_description.sql`. Number
-  them sequentially; make every migration idempotent (CREATE TABLE IF
-  NOT EXISTS, INSERT IGNORE, conditional ALTER).
-- Page-specific CSS lives in `assets/css/<page>.css`. Avoid inline styles
-  in new code — the supervisor flagged "css all over the place" in v1.
-- All cross-page links go through `<?= BASE_URL ?>` or the `url()` /
-  `asset()` helpers in `includes/db.php`. Never hard-code `/admin/...`.
+- Two HODs are assigned to ICT in the seed (rows 4 + 11). The letter
+  generator picks the one with a signature; the admin should still
+  archive the duplicate via Manage Users.
+- Some seed students have programme names where their department
+  should be (e.g. `department='Computer Science'`). Migration 005
+  reports them as unmappable; fix the user record to backfill
+  them into the registry.
+- The legacy `logbooks.file_path` column is left in place after
+  migration 009 even though it's no longer written; a follow-up
+  migration can drop it once historical entries are confirmed
+  archived.
 
 ---
 

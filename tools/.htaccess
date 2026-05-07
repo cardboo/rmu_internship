@@ -1,0 +1,10 @@
+# tools/ contains dev-only scripts (generate_hash, reset).
+# Block direct web access — admins run these from the command line
+# or remove them entirely before deploying to production.
+<IfModule mod_authz_core.c>
+    Require all denied
+</IfModule>
+<IfModule !mod_authz_core.c>
+    Order deny,allow
+    Deny from all
+</IfModule>

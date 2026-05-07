@@ -99,7 +99,26 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['save_placement'])) {
                 ]);
                 $new_id = (int)$pdo->lastInsertId();
                 // Issue the supervisor's secure-link token (60-day expiry).
-                issue_supervisor_token($pdo, $new_id, 60);
+                $token = issue_supervisor_token($pdo, $new_id, 60);
+
+                // Email the supervisor their secure link. Failure is
+                // non-fatal — the student can still copy/share the URL
+                // manually from this page.
+                require_once __DIR__ . '/../includes/email.php';
+                $sup_url = BASE_URL . 'supervisor.php?t=' . $token;
+                $body = "Hello " . htmlspecialchars($supervisor_name) . ",\n\n"
+                      . htmlspecialchars($me_name = ($_SESSION['name'] ?? 'A student')) . " has named you as their"
+                      . " on-the-job supervisor for their RMU industrial attachment at "
+                      . htmlspecialchars($company_name) . ".\n\n"
+                      . "Use the secure link below to review their weekly logs, add your remarks,"
+                      . " and submit the final evaluation at the end of the attachment. No account is needed.\n\n"
+                      . $sup_url . "\n\n"
+                      . "The link is valid for 60 days. Reply to this email if you weren't expecting it.\n\n"
+                      . "— RMU Internship Portal";
+                try_send_email($pdo, $supervisor_email,
+                    'Your RMU supervisor link for ' . ($_SESSION['name'] ?? 'a student'),
+                    $body, false);
+
                 header("Location: placement.php?msg=created");
                 exit;
             }

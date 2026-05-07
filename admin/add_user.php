@@ -60,6 +60,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['add_user'])) {
 
         // Stash the temp password so users.php can show it once.
         $_SESSION['temp_pw_notice'] = ['name' => $full_name, 'password' => $password];
+
+        // Email the new user the temp password (best-effort).
+        require_once __DIR__ . '/../includes/email.php';
+        $body = "Hello " . htmlspecialchars($full_name) . ",\n\n"
+              . "An account has been created for you on the RMU Internship Portal.\n\n"
+              . "  Email:    $email\n"
+              . "  Password: $password  (temporary — you'll be asked to change it on first login)\n\n"
+              . "Log in: " . BASE_URL . "index.php\n\n"
+              . "— RMU Internship Portal";
+        try_send_email($pdo, $email, 'Your RMU Internship Portal account', $body, false);
+
         header("Location: users.php?msg=created");
         exit;
     }

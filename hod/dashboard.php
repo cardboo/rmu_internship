@@ -71,12 +71,40 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['update_id'])) {
             $stmt = $pdo->prepare("UPDATE requests SET status = ?, rejection_reason = NULL WHERE id = ?");
             $stmt->execute([$status, $id]);
         }
+
+        // Notify the student. Non-fatal if email is misconfigured.
+        require_once __DIR__ . '/../includes/email.php';
+        $studStmt = $pdo->prepare("
+            SELECT u.email, u.full_name
+            FROM requests r JOIN users u ON u.id = r.student_id
+            WHERE r.id = ?
+        ");
+        $studStmt->execute([$id]);
+        if ($s = $studStmt->fetch(PDO::FETCH_ASSOC)) {
+            if ($status === 'approved') {
+                $body = "Hello " . htmlspecialchars($s['full_name']) . ",\n\n"
+                      . "Your industrial attachment letter request has been approved by your HOD.\n"
+                      . "Log into the RMU Internship Portal to download the official PDF letter.\n\n"
+                      . BASE_URL . "index.php\n\n"
+                      . "— RMU Internship Portal";
+                try_send_email($pdo, $s['email'], 'Attachment letter approved', $body, false);
+            } elseif ($status === 'rejected') {
+                $body = "Hello " . htmlspecialchars($s['full_name']) . ",\n\n"
+                      . "Your industrial attachment letter request has been rejected.\n"
+                      . "Reason: " . htmlspecialchars($reason ?? '(no reason given)') . "\n\n"
+                      . "Log in to the portal to submit a revised request.\n\n"
+                      . BASE_URL . "index.php\n\n"
+                      . "— RMU Internship Portal";
+                try_send_email($pdo, $s['email'], 'Attachment letter rejected', $body, false);
+            }
+        }
+
         echo json_encode(['success' => true]);
     } else {
         // Reject the action if the departments don't match
         echo json_encode(['success' => false, 'message' => 'Security Error: Student is not in your department.']);
     }
-    exit; 
+    exit;
 }
 ?>
 

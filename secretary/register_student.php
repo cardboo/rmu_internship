@@ -81,6 +81,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['register'])) {
                 'password' => $password,
                 'email'    => $email,
             ];
+
+            // Email the new student their temp password (best-effort).
+            require_once __DIR__ . '/../includes/email.php';
+            $body = "Hello " . htmlspecialchars($reg['full_name']) . ",\n\n"
+                  . "Your RMU Internship Portal account has been created by your department secretary.\n\n"
+                  . "  Email:    $email\n"
+                  . "  Password: $password  (temporary — you'll be asked to change it on first login)\n\n"
+                  . "Log in: " . BASE_URL . "index.php\n\n"
+                  . "— RMU Internship Portal";
+            try_send_email($pdo, $email, 'Your RMU Internship Portal account', $body, false);
+
             header("Location: register_student.php?msg=created");
             exit;
         } catch (PDOException $e) {

@@ -87,6 +87,9 @@ if (!function_exists('nav_active')) {
             <a href="<?php echo url('admin/bulk_upload.php'); ?>" class="<?php echo nav_active('admin/bulk_upload.php', $current_path); ?>">
                 <i class="fas fa-upload"></i>&nbsp;&nbsp;Bulk Upload
             </a>
+            <a href="<?php echo url('admin/email_settings.php'); ?>" class="<?php echo nav_active('admin/email_settings.php', $current_path); ?>">
+                <i class="fas fa-envelope"></i>&nbsp;&nbsp;Email Settings
+            </a>
             <a href="<?php echo url('admin/settings.php'); ?>" class="<?php echo nav_active('admin/settings.php', $current_path); ?>">
                 <i class="fas fa-cogs"></i>&nbsp;&nbsp;System Settings
             </a>

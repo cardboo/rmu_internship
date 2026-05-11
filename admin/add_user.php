@@ -74,7 +74,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['add_user'])) {
         // ------------------------------------------------------------
         $registry_warning = null;
         if ($role === 'student' && $index_number !== '') {
-            $exists = $pdo->prepare("SELECT id FROM student_registry WHERE index_number = ?");
+            // PK of student_registry is index_number, not id.
+            $exists = $pdo->prepare("SELECT 1 FROM student_registry WHERE index_number = ?");
             $exists->execute([$index_number]);
             if ($exists->fetchColumn()) {
                 $pdo->prepare("

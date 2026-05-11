@@ -86,12 +86,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['update_user'])) {
         // ----------------------------------------------------------------
         $registry_warning = null;
         if ($role === 'student' && $index_number !== '') {
-            // Existing row?
-            $existsStmt = $pdo->prepare("SELECT id FROM student_registry WHERE index_number = ?");
+            // PK of student_registry is index_number, not id.
+            $existsStmt = $pdo->prepare("SELECT 1 FROM student_registry WHERE index_number = ?");
             $existsStmt->execute([$index_number]);
-            $reg_id = $existsStmt->fetchColumn();
+            $reg_exists = (bool)$existsStmt->fetchColumn();
 
-            if ($reg_id) {
+            if ($reg_exists) {
                 $pdo->prepare("
                     UPDATE student_registry
                     SET full_name       = ?,
@@ -100,14 +100,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['update_user'])) {
                         gender          = COALESCE(NULLIF(?, ''), gender),
                         is_claimed      = 1,
                         claimed_user_id = ?
-                    WHERE id = ?
+                    WHERE index_number = ?
                 ")->execute([
                     $full_name,
                     $email,
                     $level,
                     $gender,
                     $user_id,
-                    (int)$reg_id,
+                    $index_number,
                 ]);
             } else {
                 // Look up canonical dept + programme

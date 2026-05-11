@@ -49,6 +49,10 @@ $readonly = $editing && (int)$editing['is_submitted'] === 1;
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['sup_otp_request']) && $editing && $placement) {
     $purpose = 'logbook:' . (int)$editing['id'];
     $code = issue_supervisor_otp($pdo, (int)$placement['id'], $placement['supervisor_email'], $purpose, 15);
+    if ($code === null) {
+        header("Location: logbook.php?id=" . (int)$editing['id'] . "&otp_err=migration");
+        exit;
+    }
     $body = "Hello " . htmlspecialchars($placement['supervisor_name']) . ",\n\n"
           . "Your verification code to sign off Week " . (int)$editing['week_number']
           . " of " . htmlspecialchars($_SESSION['name'] ?? 'a student') . "'s logbook is:\n\n"
@@ -113,6 +117,9 @@ if (($_GET['otp_sent'] ?? '') === '1') {
 }
 if (($_GET['signed'] ?? '') === '1') {
     $flash = ['type' => 'success', 'msg' => 'Supervisor sign-off saved. This week is now locked.'];
+}
+if (($_GET['otp_err'] ?? '') === 'migration') {
+    $flash = ['type' => 'error', 'msg' => 'Supervisor sign-off is unavailable until migration 015 (supervisor_otps) is applied. Ask the admin to run it from phpMyAdmin.'];
 }
 
 // ----------------------------------------------------------------------

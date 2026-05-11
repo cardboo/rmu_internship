@@ -43,6 +43,10 @@ $flash = ['type' => '', 'msg' => ''];
 // ----------------------------------------------------------------------
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['sup_otp_request']) && $placement && !$evaluation) {
     $code = issue_supervisor_otp($pdo, (int)$placement['id'], $placement['supervisor_email'], 'evaluation', 15);
+    if ($code === null) {
+        header("Location: evaluation.php?otp_err=migration");
+        exit;
+    }
     $body = "Hello " . htmlspecialchars($placement['supervisor_name']) . ",\n\n"
           . "Your verification code to submit the final evaluation for "
           . htmlspecialchars($_SESSION['name'] ?? 'a student') . " is:\n\n"
@@ -126,6 +130,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['submit_eval']) && $pl
 
 if (($_GET['otp_sent']  ?? '') === '1') $flash = ['type' => 'success', 'msg' => 'A 6-digit code was emailed to the supervisor. Ask them for it, then fill in the form below.'];
 if (($_GET['msg']       ?? '') === 'submitted') $flash = ['type' => 'success', 'msg' => 'Evaluation submitted and locked.'];
+if (($_GET['otp_err']   ?? '') === 'migration') $flash = ['type' => 'error', 'msg' => 'Supervisor evaluation is unavailable until migration 015 (supervisor_otps) is applied. Ask the admin to run it from phpMyAdmin.'];
 ?>
 <!DOCTYPE html>
 <html lang="en">

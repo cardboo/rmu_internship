@@ -29,14 +29,49 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['submit_request'])) {
 
     // We removed the PHP hard block here. The system accepts the request regardless of dates.
     $stmt = $pdo->prepare("INSERT INTO requests (student_id, company_name, company_address, start_date, end_date, status) VALUES (?, ?, ?, ?, ?, 'pending')");
-    
+
     if ($stmt->execute([$student_id, $company, $address, $start, $end])) {
-        // Check if it overlapped just to customize the success message
         $overlap = ($start <= $sem_end && $end >= $sem_start);
         if ($overlap) {
             $message = "<div class='success-banner' style='background: #fef3c7; color: #92400e;'><i class='fas fa-exclamation-circle'></i> Request submitted, but it has been flagged for HOD review because your dates overlap with the active semester.</div>";
         } else {
             $message = "<div class='success-banner'><i class='fas fa-check-circle'></i> Request submitted successfully!</div>";
+        }
+
+        // ---------- Notify HOD ----------
+        // Pick the HOD for this student's department. Prefer one with a
+        // signature (more likely to be the active HOD); fall back to
+        // any non-archived HOD in the same department.
+        require_once __DIR__ . '/../includes/email.php';
+        $deptStmt = $pdo->prepare("SELECT department FROM users WHERE id = ?");
+        $deptStmt->execute([$student_id]);
+        $student_dept = $deptStmt->fetchColumn();
+
+        if ($student_dept) {
+            $hodStmt = $pdo->prepare("
+                SELECT email, full_name FROM users
+                WHERE role = 'hod'
+                  AND department = ?
+                  AND COALESCE(is_archived, 0) = 0
+                ORDER BY (signature_path IS NOT NULL AND signature_path <> '') DESC,
+                         id DESC
+                LIMIT 1
+            ");
+            $hodStmt->execute([$student_dept]);
+            if ($hod = $hodStmt->fetch(PDO::FETCH_ASSOC)) {
+                $student_name = $_SESSION['name'] ?? 'A student';
+                $body = "Hello " . htmlspecialchars($hod['full_name']) . ",\n\n"
+                      . htmlspecialchars($student_name) . " has submitted a new industrial attachment request.\n\n"
+                      . "  Company: " . htmlspecialchars($company) . "\n"
+                      . "  Dates:   " . htmlspecialchars($start) . " to " . htmlspecialchars($end) . "\n"
+                      . ($overlap ? "  Note:    Dates overlap the active semester — flagged for review.\n" : "")
+                      . "\nLog in to the RMU Internship Portal to review:\n"
+                      . BASE_URL . "index.php\n\n"
+                      . "— RMU Internship Portal";
+                try_send_email($pdo, $hod['email'],
+                    "New attachment request from $student_name",
+                    $body, false);
+            }
         }
     }
 }

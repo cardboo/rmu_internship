@@ -81,12 +81,6 @@ if (!function_exists('nav_active')) {
             <a href="<?php echo url('admin/academic_calendar.php'); ?>" class="<?php echo nav_active('admin/academic_calendar.php', $current_path); ?>">
                 <i class="fas fa-calendar-alt"></i>&nbsp;&nbsp;Academic Calendar
             </a>
-            <a href="<?php echo url('admin/letter_templates.php'); ?>" class="<?php echo nav_active('admin/letter_templates.php', $current_path); ?>">
-                <i class="fas fa-file-alt"></i>&nbsp;&nbsp;Letter Templates
-            </a>
-            <a href="<?php echo url('admin/email_settings.php'); ?>" class="<?php echo nav_active('admin/email_settings.php', $current_path); ?>">
-                <i class="fas fa-envelope"></i>&nbsp;&nbsp;Email Settings
-            </a>
             <a href="<?php echo url('admin/settings.php'); ?>" class="<?php echo nav_active('admin/settings.php', $current_path); ?>">
                 <i class="fas fa-cogs"></i>&nbsp;&nbsp;System Settings
             </a>

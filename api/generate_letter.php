@@ -50,45 +50,22 @@ if (empty($data['hod_name'])) {
     die("No active HOD assigned to the " . htmlspecialchars($data['department'] ?? '') . " department. Ask the admin to assign one before generating letters.");
 }
 
-// 4. Resolve dept / academic year / semester for the template lookup.
-$dept_id_stmt = $pdo->prepare("SELECT id FROM departments WHERE name = ? LIMIT 1");
-$dept_id_stmt->execute([$data['department']]);
-$dept_id = $dept_id_stmt->fetchColumn() ?: null;
-
-$year_id  = !empty($data['academic_year_id']) ? (int)$data['academic_year_id'] : null;
+// 4. Resolve the academic year row (used in placeholder substitution).
 $year_row = null;
 $sem_row  = null;
-if ($year_id) {
+if (!empty($data['academic_year_id'])) {
     $yStmt = $pdo->prepare("SELECT * FROM academic_years WHERE id = ?");
-    $yStmt->execute([$year_id]);
+    $yStmt->execute([(int)$data['academic_year_id']]);
     $year_row = $yStmt->fetch(PDO::FETCH_ASSOC) ?: null;
 }
 if (!empty($data['start_date'])) {
     $sem_row = semester_for_date($pdo, $data['start_date']);
 }
 
-// 5. Fetch the most-specific letter template that matches.
-//    Order: dept+year+sem > dept+year > dept > default.
-$tplStmt = $pdo->prepare("
-    SELECT * FROM letter_templates
-    WHERE (department_id    = ? OR department_id    IS NULL)
-      AND (academic_year_id = ? OR academic_year_id IS NULL)
-      AND (semester_id      = ? OR semester_id      IS NULL)
-    ORDER BY (department_id    IS NOT NULL) DESC,
-             (academic_year_id IS NOT NULL) DESC,
-             (semester_id      IS NOT NULL) DESC,
-             id ASC
-    LIMIT 1
-");
-$tplStmt->execute([
-    $dept_id,
-    $year_id,
-    $sem_row ? (int)$sem_row['id'] : null,
-]);
-$template = $tplStmt->fetch(PDO::FETCH_ASSOC) ?: null;
-
-// Fallback if migration 011 hasn't run or no template at all.
-$template_body = $template['body'] ?? "We wish to introduce the above-named student who is currently pursuing a program in {student_program} at this University. As part of the requirements for the award of a degree, students are required to undergo a {weeks}-week industrial attachment to gain practical experience.\n\nWe would be grateful if you could offer the student the opportunity to train with your organization from {start_date} to {end_date}.\n\nWe look forward to a favorable response from you.";
+// 5. Hardcoded letter body. (Template-per-department feature was removed
+//    per the supervisor's simplification request — admins no longer
+//    edit letter wording from the UI.)
+$template_body = "We wish to introduce the above-named student who is currently pursuing a program in {student_program} at this University. As part of the requirements for the award of a degree, students are required to undergo a {weeks}-week industrial attachment to gain practical experience.\n\nWe would be grateful if you could offer the student the opportunity to train with your organization from {start_date} to {end_date}.\n\nWe look forward to a favorable response from you.";
 
 // Check if the user specifically chose a generic letter
 $is_twimc = (strtolower(trim($data['company_name'] ?? '')) == 'to whom it may concern');

@@ -69,6 +69,87 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['update_user'])) {
             $role === 'student' && $index_number !== '' ? $index_number : null,
             $user_id,
         ]);
+
+        // ----------------------------------------------------------------
+        // Mirror the student edit into student_registry (matches the
+        // logic in admin/add_user.php). Three cases:
+        //   1. role just stopped being 'student'  →  nothing to do here.
+        //   2. role is student with a valid index AND a registry row exists
+        //      for that index  →  refresh editable fields (full_name,
+        //      email, level, gender) and link claimed_user_id.
+        //   3. role is student with a valid index AND no registry row yet
+        //      AND the dept+programme are canonical  →  insert a new
+        //      registry row marked claimed.
+        // Cases that produce a warning back to admin/users.php:
+        //      role is student but index is empty, dept is unknown, or
+        //      programme is unknown.
+        // ----------------------------------------------------------------
+        $registry_warning = null;
+        if ($role === 'student' && $index_number !== '') {
+            // Existing row?
+            $existsStmt = $pdo->prepare("SELECT id FROM student_registry WHERE index_number = ?");
+            $existsStmt->execute([$index_number]);
+            $reg_id = $existsStmt->fetchColumn();
+
+            if ($reg_id) {
+                $pdo->prepare("
+                    UPDATE student_registry
+                    SET full_name       = ?,
+                        email           = COALESCE(NULLIF(?, ''), email),
+                        level           = COALESCE(NULLIF(?, ''), level),
+                        gender          = COALESCE(NULLIF(?, ''), gender),
+                        is_claimed      = 1,
+                        claimed_user_id = ?
+                    WHERE id = ?
+                ")->execute([
+                    $full_name,
+                    $email,
+                    $level,
+                    $gender,
+                    $user_id,
+                    (int)$reg_id,
+                ]);
+            } else {
+                // Look up canonical dept + programme
+                $deptStmt = $pdo->prepare("SELECT id FROM departments WHERE name = ?");
+                $deptStmt->execute([$department]);
+                $dept_fk = $deptStmt->fetchColumn();
+
+                $prog_fk = null;
+                if ($dept_fk) {
+                    $progStmt = $pdo->prepare("SELECT id FROM programs WHERE name = ? AND department_id = ?");
+                    $progStmt->execute([$program, $dept_fk]);
+                    $prog_fk = $progStmt->fetchColumn();
+                }
+
+                if ($dept_fk && $prog_fk) {
+                    $pdo->prepare("
+                        INSERT IGNORE INTO student_registry
+                            (index_number, full_name, email, department_id, program_id,
+                             level, gender, is_claimed, claimed_user_id)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?)
+                    ")->execute([
+                        $index_number, $full_name, $email,
+                        (int)$dept_fk, (int)$prog_fk,
+                        $level !== '' ? $level : null,
+                        $gender !== '' ? $gender : null,
+                        $user_id,
+                    ]);
+                } else {
+                    $registry_warning = "Saved, but this student isn't in the Student Registry yet because "
+                        . (!$dept_fk ? "department '$department' isn't a row in Programs &amp; Depts"
+                                     : "programme '$program' isn't in the '$department' department")
+                        . ". Fix it on the Programs &amp; Depts page, then save again.";
+                }
+            }
+        } elseif ($role === 'student' && $index_number === '') {
+            $registry_warning = "Saved, but this student isn't in the Student Registry because no index number was provided.";
+        }
+
+        if ($registry_warning) {
+            $_SESSION['flash_warning'] = $registry_warning;
+        }
+
         header("Location: users.php?msg=updated");
         exit;
     }

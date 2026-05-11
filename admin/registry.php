@@ -237,10 +237,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['upload_csv'])) {
 // ----------------------------------------------------------------------
 $q = trim($_GET['q'] ?? '');
 
+// LEFT JOINs (not INNER) so rows with missing dept/programme FKs
+// still appear — otherwise they vanish silently. The view labels
+// such rows with an "FK broken" badge so admin can fix them.
 $sql = "SELECT r.*, d.name AS dept_name, p.name AS program_name
         FROM student_registry r
-        JOIN departments d ON d.id = r.department_id
-        JOIN programs    p ON p.id = r.program_id";
+        LEFT JOIN departments d ON d.id = r.department_id
+        LEFT JOIN programs    p ON p.id = r.program_id";
 $params = [];
 if ($q !== '') {
     $sql .= " WHERE r.index_number LIKE ? OR r.full_name LIKE ? OR r.email LIKE ? OR d.name LIKE ? OR p.name LIKE ?";
@@ -563,9 +566,27 @@ foreach ($programs as $p) {
                         <tr>
                             <td><strong><?php echo htmlspecialchars($row['index_number']); ?></strong></td>
                             <td><?php echo htmlspecialchars($row['full_name']); ?></td>
-                            <td class="muted small"><?php echo htmlspecialchars($row['email'] ?? '—'); ?></td>
-                            <td><?php echo htmlspecialchars($row['dept_name']); ?></td>
-                            <td><?php echo htmlspecialchars($row['program_name']); ?></td>
+                            <td class="muted small">
+                                <?php if (!empty($row['email'])): ?>
+                                    <?php echo htmlspecialchars($row['email']); ?>
+                                <?php else: ?>
+                                    <span style="color:#92400e;" title="No email on file in registry">— no email —</span>
+                                <?php endif; ?>
+                            </td>
+                            <td>
+                                <?php if ($row['dept_name']): ?>
+                                    <?php echo htmlspecialchars($row['dept_name']); ?>
+                                <?php else: ?>
+                                    <span style="background:#fee2e2;color:#991b1b;padding:2px 6px;border-radius:4px;font-size:0.7rem;font-weight:700;" title="department_id=<?php echo (int)$row['department_id']; ?> references a department that no longer exists">FK broken</span>
+                                <?php endif; ?>
+                            </td>
+                            <td>
+                                <?php if ($row['program_name']): ?>
+                                    <?php echo htmlspecialchars($row['program_name']); ?>
+                                <?php else: ?>
+                                    <span style="background:#fee2e2;color:#991b1b;padding:2px 6px;border-radius:4px;font-size:0.7rem;font-weight:700;" title="program_id=<?php echo (int)$row['program_id']; ?> references a programme that no longer exists">FK broken</span>
+                                <?php endif; ?>
+                            </td>
                             <td><?php echo htmlspecialchars($row['level'] ?? '—'); ?></td>
                             <td>
                                 <?php if ($row['is_claimed']): ?>

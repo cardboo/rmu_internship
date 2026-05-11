@@ -98,25 +98,21 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['save_placement'])) {
                     $semester ? (int)$semester['id'] : null,
                 ]);
                 $new_id = (int)$pdo->lastInsertId();
-                // Issue the supervisor's secure-link token (60-day expiry).
-                $token = issue_supervisor_token($pdo, $new_id, 60);
 
-                // Email the supervisor their secure link. Failure is
-                // non-fatal — the student can still copy/share the URL
-                // manually from this page.
+                // Notify the supervisor that they've been named. They'll
+                // sign weekly logs + the final evaluation from the
+                // student's machine after entering an emailed OTP.
                 require_once __DIR__ . '/../includes/email.php';
-                $sup_url = BASE_URL . 'supervisor.php?t=' . $token;
+                $student_name = $_SESSION['name'] ?? 'A student';
                 $body = "Hello " . htmlspecialchars($supervisor_name) . ",\n\n"
-                      . htmlspecialchars($me_name = ($_SESSION['name'] ?? 'A student')) . " has named you as their"
-                      . " on-the-job supervisor for their RMU industrial attachment at "
-                      . htmlspecialchars($company_name) . ".\n\n"
-                      . "Use the secure link below to review their weekly logs, add your remarks,"
-                      . " and submit the final evaluation at the end of the attachment. No account is needed.\n\n"
-                      . $sup_url . "\n\n"
-                      . "The link is valid for 60 days. Reply to this email if you weren't expecting it.\n\n"
+                      . htmlspecialchars($student_name) . " has named you as their on-the-job supervisor for"
+                      . " their RMU industrial attachment at " . htmlspecialchars($company_name) . ".\n\n"
+                      . "When it's time to sign off a weekly log or submit the final evaluation,"
+                      . " the student will hand you their device. A 6-digit code will be sent to this email"
+                      . " to verify it's you — type it in to act on the entry.\n\n"
                       . "— RMU Internship Portal";
                 try_send_email($pdo, $supervisor_email,
-                    'Your RMU supervisor link for ' . ($_SESSION['name'] ?? 'a student'),
+                    'You\'re the supervisor for ' . $student_name . ' (RMU attachment)',
                     $body, false);
 
                 header("Location: placement.php?msg=created");
@@ -130,22 +126,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['save_placement'])) {
     if ($err) $flash = ['type' => 'error', 'msg' => $err];
 }
 
-// Regenerate the supervisor token (e.g. if it was lost or expired).
-if (isset($_GET['regen_token']) && $placement) {
-    issue_supervisor_token($pdo, (int)$placement['id'], 60);
-    header("Location: placement.php?msg=token_regenerated");
-    exit;
-}
-
-if (($_GET['msg'] ?? '') === 'created')          $flash = ['type' => 'success', 'msg' => 'Placement registered. A secure link has been generated for your on-the-job supervisor (see below).'];
-if (($_GET['msg'] ?? '') === 'updated')          $flash = ['type' => 'success', 'msg' => 'Placement updated.'];
-if (($_GET['msg'] ?? '') === 'token_regenerated') $flash = ['type' => 'success', 'msg' => 'New supervisor link generated. The previous one no longer works.'];
-
-// Refresh placement to pick up the freshly-issued token.
-if ($placement) {
-    $placementStmt->execute([$student_id]);
-    $placement = $placementStmt->fetch(PDO::FETCH_ASSOC) ?: null;
-}
+if (($_GET['msg'] ?? '') === 'created') $flash = ['type' => 'success', 'msg' => 'Placement registered. Your on-the-job supervisor has been notified by email.'];
+if (($_GET['msg'] ?? '') === 'updated') $flash = ['type' => 'success', 'msg' => 'Placement updated.'];
 
 // Pre-fill values: existing placement first, fall back to last approved request's dates.
 $pre = [
@@ -299,51 +281,23 @@ $has_approved_letter = $last_request && $last_request['status'] === 'approved';
             </div>
         </div>
 
-        <?php
-            $sup_url = !empty($placement['supervisor_token'])
-                ? BASE_URL . 'supervisor.php?t=' . $placement['supervisor_token']
-                : null;
-            $expires = !empty($placement['supervisor_token_expires_at'])
-                ? date('d M Y', strtotime($placement['supervisor_token_expires_at']))
-                : null;
-        ?>
-        <div class="card supervisor-link-card" style="margin-top: 18px;">
-            <h3><i class="fas fa-link"></i>&nbsp; Supervisor's Secure Link</h3>
+        <div class="card" style="margin-top: 18px;">
+            <h3><i class="fas fa-shield-alt"></i>&nbsp; Supervisor Sign-Off</h3>
             <p class="muted">
-                Send this URL to your on-the-job supervisor (<?php echo htmlspecialchars($placement['supervisor_email']); ?>).
-                It lets them review your weekly logs, add their remarks, and complete the final evaluation —
-                no account needed.
+                Your on-the-job supervisor (<strong><?php echo htmlspecialchars($placement['supervisor_email']); ?></strong>)
+                signs each weekly log and submits the final evaluation directly on this device.
+                When they're ready to act, open the relevant page below — a 6-digit code is sent to
+                their email to verify identity each time.
             </p>
-            <?php if ($sup_url): ?>
-                <div class="link-row">
-                    <input type="text" id="sup_url" value="<?php echo htmlspecialchars($sup_url); ?>" readonly>
-                    <button type="button" class="btn btn-primary btn-sm" onclick="copySupervisorLink()">
-                        <i class="fas fa-copy"></i>&nbsp; Copy
-                    </button>
-                </div>
-                <div class="muted small" style="margin-top: 8px;">
-                    Expires <?php echo htmlspecialchars($expires ?? '—'); ?>.
-                    <a href="?regen_token=1" onclick="return confirm('Generate a new link? The old one will stop working.');">Regenerate</a>
-                </div>
-            <?php else: ?>
-                <p>No supervisor link yet.
-                    <a href="?regen_token=1" class="btn btn-ghost btn-sm">
-                        <i class="fas fa-sync-alt"></i>&nbsp; Generate link
-                    </a>
-                </p>
-            <?php endif; ?>
+            <div class="form-actions" style="justify-content: flex-start; gap: 10px;">
+                <a href="<?php echo BASE_URL; ?>student/logbook.php" class="btn btn-ghost">
+                    <i class="fas fa-book"></i>&nbsp; Weekly logs
+                </a>
+                <a href="<?php echo BASE_URL; ?>student/evaluation.php" class="btn btn-primary">
+                    <i class="fas fa-clipboard-check"></i>&nbsp; Final evaluation
+                </a>
+            </div>
         </div>
-
-        <script>
-        function copySupervisorLink() {
-            const el = document.getElementById('sup_url');
-            el.select(); el.setSelectionRange(0, 99999);
-            navigator.clipboard.writeText(el.value).then(() => {
-                el.style.background = '#dcfce7';
-                setTimeout(() => el.style.background = '', 1500);
-            });
-        }
-        </script>
     <?php endif; ?>
 </div>
 </body>

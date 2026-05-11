@@ -1,9 +1,11 @@
 <?php
 require __DIR__ . '/../includes/db.php';
+require_once __DIR__ . '/../includes/email.php';
 require_role('student');
 
 $student_id = (int)$_SESSION['user_id'];
 $cur_year   = current_academic_year($pdo);
+$flash      = ['type' => '', 'msg' => ''];
 
 // ----------------------------------------------------------------------
 // Pull header info auto-filled at the top of the form
@@ -40,7 +42,78 @@ if (!empty($_GET['id'])) {
 }
 $readonly = $editing && (int)$editing['is_submitted'] === 1;
 
-$flash = ['type' => '', 'msg' => ''];
+// ----------------------------------------------------------------------
+// POST: supervisor OTP — request a fresh code (emails it to the
+// supervisor address on the placement record) for THIS logbook week.
+// ----------------------------------------------------------------------
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['sup_otp_request']) && $editing && $placement) {
+    $purpose = 'logbook:' . (int)$editing['id'];
+    $code = issue_supervisor_otp($pdo, (int)$placement['id'], $placement['supervisor_email'], $purpose, 15);
+    $body = "Hello " . htmlspecialchars($placement['supervisor_name']) . ",\n\n"
+          . "Your verification code to sign off Week " . (int)$editing['week_number']
+          . " of " . htmlspecialchars($_SESSION['name'] ?? 'a student') . "'s logbook is:\n\n"
+          . "    $code\n\n"
+          . "It expires in 15 minutes.\n\n"
+          . "If you didn't expect this, ignore it.\n\n— RMU Internship Portal";
+    try_send_email($pdo, $placement['supervisor_email'],
+        'RMU supervisor sign-off code', $body, false);
+    header("Location: logbook.php?id=" . (int)$editing['id'] . "&otp_sent=1");
+    exit;
+}
+
+// ----------------------------------------------------------------------
+// POST: supervisor remarks submission — verifies the OTP and writes
+// the signed remarks atomically.
+// ----------------------------------------------------------------------
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['sup_submit_remarks']) && $editing && $placement) {
+    $code    = trim($_POST['sup_otp'] ?? '');
+    $sup_nm  = trim($_POST['sup_name'] ?? '');
+    $sup_st  = trim($_POST['sup_status'] ?? '');
+    $remarks = trim($_POST['sup_remarks'] ?? '');
+
+    $err = null;
+    if ($sup_nm === '') {
+        $err = 'Supervisor name is required.';
+    } elseif ($code === '' || !preg_match('/^\d{6}$/', $code)) {
+        $err = 'Enter the 6-digit OTP that was sent to your email.';
+    } elseif ((int)$editing['supervisor_signed_at'] !== 0 && !empty($editing['supervisor_signed_at'])) {
+        $err = 'This week has already been signed off.';
+    } else {
+        $purpose = 'logbook:' . (int)$editing['id'];
+        if (!verify_supervisor_otp($pdo, (int)$placement['id'], $purpose, $code)) {
+            $err = 'OTP is invalid or has expired. Request a new one.';
+        }
+    }
+
+    if ($err) {
+        $flash = ['type' => 'error', 'msg' => $err];
+    } else {
+        $pdo->prepare("
+            UPDATE logbooks
+            SET supervisor_remarks            = ?,
+                supervisor_signed_by_name     = ?,
+                supervisor_signed_by_status   = ?,
+                supervisor_signed_at          = NOW()
+            WHERE id = ? AND student_id = ?
+        ")->execute([
+            $remarks !== '' ? $remarks : null,
+            $sup_nm,
+            $sup_st !== '' ? $sup_st : null,
+            (int)$editing['id'], $student_id,
+        ]);
+        header("Location: logbook.php?id=" . (int)$editing['id'] . "&signed=1");
+        exit;
+    }
+}
+
+$flash = $flash ?? ['type' => '', 'msg' => ''];
+if (empty($flash['msg'])) $flash = ['type' => '', 'msg' => ''];
+if (($_GET['otp_sent'] ?? '') === '1') {
+    $flash = ['type' => 'success', 'msg' => 'A 6-digit code was emailed to your supervisor. Ask them for it, then type it in below.'];
+}
+if (($_GET['signed'] ?? '') === '1') {
+    $flash = ['type' => 'success', 'msg' => 'Supervisor sign-off saved. This week is now locked.'];
+}
 
 // ----------------------------------------------------------------------
 // POST: save draft / submit
@@ -320,22 +393,69 @@ if ($editing) {
 
                 <?php if ($editing && (int)$editing['is_submitted'] === 1): ?>
                     <h4 class="section-h">Supervisor's Remarks</h4>
-                    <div class="sup-block">
-                        <?php if (!empty($editing['supervisor_remarks'])): ?>
-                            <p><?php echo nl2br(htmlspecialchars($editing['supervisor_remarks'])); ?></p>
+                    <?php if (!empty($editing['supervisor_signed_at'])): ?>
+                        <!-- Locked: read-only signed entry -->
+                        <div class="sup-block">
+                            <?php if (!empty($editing['supervisor_remarks'])): ?>
+                                <p><?php echo nl2br(htmlspecialchars($editing['supervisor_remarks'])); ?></p>
+                            <?php endif; ?>
                             <p class="muted small">
-                                — <?php echo htmlspecialchars($editing['supervisor_signed_by_name'] ?? ''); ?>
+                                <i class="fas fa-lock"></i>&nbsp;
+                                Signed by <strong><?php echo htmlspecialchars($editing['supervisor_signed_by_name'] ?? ''); ?></strong>
                                 <?php if (!empty($editing['supervisor_signed_by_status'])): ?>
                                     (<?php echo htmlspecialchars($editing['supervisor_signed_by_status']); ?>)
                                 <?php endif; ?>
-                                <?php if (!empty($editing['supervisor_signed_at'])): ?>
-                                    · <?php echo htmlspecialchars(date('d M Y', strtotime($editing['supervisor_signed_at']))); ?>
-                                <?php endif; ?>
+                                on <?php echo htmlspecialchars(date('d M Y', strtotime($editing['supervisor_signed_at']))); ?>
                             </p>
-                        <?php else: ?>
-                            <p class="muted">Awaiting your on-the-job supervisor — they'll receive a secure link to add remarks.</p>
-                        <?php endif; ?>
-                    </div>
+                        </div>
+                    <?php else: ?>
+                        <!-- OTP sign-off panel: supervisor sits at the student's machine -->
+                        <div class="sup-otp-panel">
+                            <p class="muted small">
+                                <i class="fas fa-shield-alt"></i>&nbsp;
+                                Supervisor (<strong><?php echo htmlspecialchars($placement['supervisor_email'] ?? ''); ?></strong>):
+                                request a 6-digit code to verify your identity, then add your remarks below.
+                                Once submitted, this week is locked and cannot be edited.
+                            </p>
+
+                            <form method="POST" style="margin-top: 6px;">
+                                <button type="submit" name="sup_otp_request" class="btn btn-ghost btn-sm">
+                                    <i class="fas fa-paper-plane"></i>&nbsp; Send OTP to supervisor's email
+                                </button>
+                            </form>
+
+                            <form method="POST" style="margin-top: 16px;">
+                                <div class="grid-2">
+                                    <div class="field">
+                                        <label>6-digit code <span class="req">*</span></label>
+                                        <input type="text" name="sup_otp" inputmode="numeric"
+                                               pattern="\d{6}" maxlength="6" required
+                                               placeholder="000000">
+                                    </div>
+                                    <div class="field">
+                                        <label>Supervisor's name <span class="req">*</span></label>
+                                        <input type="text" name="sup_name" required
+                                               value="<?php echo htmlspecialchars($placement['supervisor_name'] ?? ''); ?>">
+                                    </div>
+                                    <div class="field">
+                                        <label>Title / status</label>
+                                        <input type="text" name="sup_status"
+                                               value="<?php echo htmlspecialchars($placement['supervisor_title'] ?? ''); ?>">
+                                    </div>
+                                </div>
+                                <div class="field">
+                                    <label>Remarks</label>
+                                    <textarea name="sup_remarks" rows="3"
+                                              placeholder="What you observed about the student's work this week..."></textarea>
+                                </div>
+                                <div class="form-actions">
+                                    <button type="submit" name="sup_submit_remarks" class="btn btn-primary">
+                                        <i class="fas fa-lock"></i>&nbsp; Sign &amp; Lock Week
+                                    </button>
+                                </div>
+                            </form>
+                        </div>
+                    <?php endif; ?>
                 <?php endif; ?>
 
                 <?php if (!$readonly): ?>

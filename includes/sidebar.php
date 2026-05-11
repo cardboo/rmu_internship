@@ -111,6 +111,9 @@ if (!function_exists('nav_active')) {
             <a href="<?php echo url('student/logbook.php'); ?>" class="<?php echo nav_active('student/logbook.php', $current_path); ?>">
                 <i class="fas fa-book"></i>&nbsp;&nbsp;Weekly Logbook
             </a>
+            <a href="<?php echo url('student/evaluation.php'); ?>" class="<?php echo nav_active('student/evaluation.php', $current_path); ?>">
+                <i class="fas fa-clipboard-check"></i>&nbsp;&nbsp;Final Evaluation
+            </a>
         <?php endif; ?>
 
         <div class="nav-section">ACCOUNT</div>

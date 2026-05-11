@@ -153,6 +153,69 @@ function issue_supervisor_token(PDO $pdo, int $placement_id, int $days = 60): st
     return $token;
 }
 
+// ----------------------------------------------------------------------
+// Supervisor OTPs (one-time codes emailed to the on-the-job supervisor
+// so they can sign off on weekly logs / submit the final evaluation
+// from the student's machine without an account).
+// ----------------------------------------------------------------------
+
+/**
+ * Generate, store, and return a 6-digit OTP for a placement + purpose.
+ * Default expiry: 15 minutes. The caller is responsible for emailing
+ * the returned plaintext code to placement.supervisor_email.
+ */
+function issue_supervisor_otp(PDO $pdo, int $placement_id, string $email, string $purpose, int $ttl_minutes = 15): string {
+    $code = str_pad((string)random_int(0, 999999), 6, '0', STR_PAD_LEFT);
+    $hash = password_hash($code, PASSWORD_DEFAULT);
+
+    // Invalidate any previous still-valid OTPs for the same purpose, so
+    // re-requesting a code doesn't leave several active at once.
+    $pdo->prepare("
+        UPDATE supervisor_otps
+        SET consumed_at = NOW()
+        WHERE placement_id = ?
+          AND purpose = ?
+          AND consumed_at IS NULL
+    ")->execute([$placement_id, $purpose]);
+
+    $pdo->prepare("
+        INSERT INTO supervisor_otps
+            (placement_id, email, purpose, code_hash, expires_at)
+        VALUES (?, ?, ?, ?, DATE_ADD(NOW(), INTERVAL ? MINUTE))
+    ")->execute([$placement_id, $email, $purpose, $hash, $ttl_minutes]);
+
+    return $code;
+}
+
+/**
+ * Verify a supplied code against the latest unconsumed OTP for
+ * (placement, purpose). Marks the OTP consumed on success.
+ *
+ * @return bool true if the code matches and isn't expired/consumed
+ */
+function verify_supervisor_otp(PDO $pdo, int $placement_id, string $purpose, string $code): bool {
+    $code = trim($code);
+    if (!preg_match('/^\d{6}$/', $code)) return false;
+
+    $stmt = $pdo->prepare("
+        SELECT id, code_hash
+        FROM supervisor_otps
+        WHERE placement_id = ?
+          AND purpose = ?
+          AND consumed_at IS NULL
+          AND expires_at > NOW()
+        ORDER BY id DESC LIMIT 1
+    ");
+    $stmt->execute([$placement_id, $purpose]);
+    $row = $stmt->fetch(PDO::FETCH_ASSOC);
+    if (!$row) return false;
+    if (!password_verify($code, $row['code_hash'])) return false;
+
+    $pdo->prepare("UPDATE supervisor_otps SET consumed_at = NOW() WHERE id = ?")
+        ->execute([(int)$row['id']]);
+    return true;
+}
+
 /**
  * Given a date (Y-m-d), find which semester of the current
  * academic year it falls within. Returns the semester row or null.

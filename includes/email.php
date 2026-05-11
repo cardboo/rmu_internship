@@ -13,12 +13,22 @@ const SMTP_PASS         = 'twkurtspdegwanpu';        // Gmail app password
 const SMTP_FROM_ADDRESS = 'isabdulaisaiku@gmail.com';
 const SMTP_FROM_NAME    = 'RMU Internship Portal';
 
-// Load PHPMailer if it's been dropped into lib/PHPMailer/src/.
-$_phpmailer_dir = __DIR__ . '/../lib/PHPMailer/src';
-if (is_file($_phpmailer_dir . '/PHPMailer.php')) {
-    require_once $_phpmailer_dir . '/Exception.php';
-    require_once $_phpmailer_dir . '/PHPMailer.php';
-    require_once $_phpmailer_dir . '/SMTP.php';
+// Auto-locate the PHPMailer src/ directory wherever it ended up
+// under lib/PHPMailer/. Tolerates both "lib/PHPMailer/src/" and
+// "lib/PHPMailer/PHPMailer-x.y.z/src/" (the path that results from
+// extracting the official release zip directly).
+$_phpmailer_src = null;
+$_pm_candidates = array_merge(
+    [__DIR__ . '/../lib/PHPMailer/src'],
+    glob(__DIR__ . '/../lib/PHPMailer/*/src') ?: []
+);
+foreach ($_pm_candidates as $_cand) {
+    if (is_file($_cand . '/PHPMailer.php')) { $_phpmailer_src = $_cand; break; }
+}
+if ($_phpmailer_src !== null) {
+    require_once $_phpmailer_src . '/Exception.php';
+    require_once $_phpmailer_src . '/PHPMailer.php';
+    require_once $_phpmailer_src . '/SMTP.php';
 }
 
 if (!function_exists('send_email')) {

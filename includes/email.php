@@ -7,8 +7,8 @@
  */
 
 const SMTP_HOST         = 'smtp.gmail.com';
-const SMTP_PORT         = 465;
-const SMTP_SECURE       = 'ssl';                     // 'ssl' (port 465) or 'tls' (port 587)
+const SMTP_PORT         = 587;
+const SMTP_SECURE       = 'tls';                     // 'tls' (port 587) or 'ssl' (port 465)
 const SMTP_USER         = 'isabdulaisaiku@gmail.com';
 const SMTP_PASS         = 'twkurtspdegwanpu';        // Gmail app password
 const SMTP_FROM_ADDRESS = 'isabdulaisaiku@gmail.com';

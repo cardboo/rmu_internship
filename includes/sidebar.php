@@ -96,12 +96,18 @@ if (!function_exists('nav_active')) {
             <a href="<?php echo url('hod/logbook_review.php'); ?>" class="<?php echo nav_active('hod/logbook_review.php', $current_path); ?>">
                 <i class="fas fa-book-open"></i>&nbsp;&nbsp;Logbook Reviews
             </a>
+            <a href="<?php echo url('hod/evaluations.php'); ?>" class="<?php echo nav_active('hod/evaluations.php', $current_path); ?>">
+                <i class="fas fa-clipboard-check"></i>&nbsp;&nbsp;Evaluations
+            </a>
         <?php endif; ?>
 
         <?php if ($role === 'hod'): ?>
             <div class="nav-section">ACADEMIC OVERSIGHT</div>
             <a href="<?php echo url('hod/logbook_review.php'); ?>" class="<?php echo nav_active('hod/logbook_review.php', $current_path); ?>">
                 <i class="fas fa-book-open"></i>&nbsp;&nbsp;Logbook Reviews
+            </a>
+            <a href="<?php echo url('hod/evaluations.php'); ?>" class="<?php echo nav_active('hod/evaluations.php', $current_path); ?>">
+                <i class="fas fa-clipboard-check"></i>&nbsp;&nbsp;Evaluations
             </a>
         <?php endif; ?>
 

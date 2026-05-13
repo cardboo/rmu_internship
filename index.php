@@ -76,6 +76,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <link rel="stylesheet" href="<?php echo asset('css/login.css'); ?>">
     <link rel="stylesheet" href="<?php echo asset('css/layout.css'); ?>">
+    <link rel="stylesheet" href="<?php echo asset('css/components.css'); ?>">
 </head>
 <body class="login-body no-sidebar">
     <div class="login-card">

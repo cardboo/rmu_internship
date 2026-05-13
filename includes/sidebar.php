@@ -45,6 +45,12 @@ if (!function_exists('nav_active')) {
     }
 }
 ?>
+<!-- Universal component styles. Loaded from sidebar.php so it lands
+     on every authenticated page automatically — buttons, inputs and
+     labels keep the same look-and-feel even on pages that only
+     define their own bespoke styles. -->
+<link rel="stylesheet" href="<?php echo asset('css/components.css'); ?>">
+
 <div class="sidebar">
     <div class="profile" style="text-align: center; padding: 20px 10px;">
         <div class="profile-img-container" style="margin-bottom: 15px;">

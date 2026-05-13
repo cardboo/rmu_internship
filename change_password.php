@@ -64,6 +64,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <link rel="stylesheet" href="<?php echo asset('css/style.css'); ?>">
     <link rel="stylesheet" href="<?php echo asset('css/auth.css'); ?>">
+    <link rel="stylesheet" href="<?php echo asset('css/components.css'); ?>">
 </head>
 <body class="auth-body no-sidebar">
     <div class="auth-card">

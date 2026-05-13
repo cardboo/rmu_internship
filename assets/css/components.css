@@ -1,0 +1,169 @@
+/* ============================================================
+   Universal UI primitives — buttons, inputs, labels.
+   Loaded last (via sidebar.php) so it acts as the canonical
+   look-and-feel. Page-specific CSS can still override but
+   shouldn't normally need to.
+   ============================================================ */
+
+/* ---------- BUTTONS ---------------------------------------- */
+
+.btn, .btn-primary, .btn-action, .btn-save, .btn-login, .auth-btn,
+.btn-filter {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    padding: 10px 18px;
+    border: none;
+    border-radius: 8px;
+    cursor: pointer;
+    font-weight: 600;
+    font-size: 0.9rem;
+    font-family: inherit;
+    text-decoration: none;
+    line-height: 1.2;
+    background: #0D8ABC;
+    color: white;
+    transition: background 0.2s, box-shadow 0.2s, transform 0.05s;
+    box-sizing: border-box;
+}
+.btn:hover, .btn-primary:hover, .btn-action:hover,
+.btn-save:hover, .btn-login:hover, .auth-btn:hover,
+.btn-filter:hover {
+    background: #0a6e96;
+}
+.btn:active { transform: translateY(1px); }
+
+.btn-primary { background: #0D8ABC; color: white; }
+.btn-primary:hover { background: #0a6e96; }
+
+.btn-ghost, .btn-reset {
+    background: #f1f5f9;
+    color: #475569;
+    border: 1px solid #e2e8f0;
+}
+.btn-ghost:hover, .btn-reset:hover {
+    background: #e2e8f0;
+    color: #1e293b;
+}
+
+.btn-danger {
+    background: white;
+    color: #b91c1c;
+    border: 1px solid #fecaca;
+}
+.btn-danger:hover { background: #fee2e2; }
+
+.btn-sm {
+    padding: 6px 12px;
+    font-size: 0.82rem;
+}
+
+.btn:disabled,
+.btn-primary:disabled,
+.btn-ghost:disabled,
+.btn-danger:disabled,
+.btn-action:disabled,
+.btn-save:disabled,
+.btn-login:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+/* ---------- INPUTS ----------------------------------------- */
+
+.form-control,
+.input-field,
+.filter-input,
+.field input[type="text"],
+.field input[type="email"],
+.field input[type="password"],
+.field input[type="number"],
+.field input[type="date"],
+.field input[type="tel"],
+.field input[type="url"],
+.field select,
+.field textarea,
+.auth-field input,
+.input-group input,
+.input-group select,
+.input-group textarea,
+.form-group input,
+.form-group select,
+.form-group textarea {
+    width: 100%;
+    box-sizing: border-box;
+    padding: 10px 12px;
+    border: 1px solid #cbd5e1;
+    border-radius: 8px;
+    font-size: 0.92rem;
+    font-family: inherit;
+    background: white;
+    color: #0f172a;
+    transition: border-color 0.15s, box-shadow 0.15s;
+}
+.form-control:focus,
+.input-field:focus,
+.filter-input:focus,
+.field input:focus,
+.field select:focus,
+.field textarea:focus,
+.auth-field input:focus,
+.input-group input:focus,
+.input-group select:focus,
+.input-group textarea:focus,
+.form-group input:focus,
+.form-group select:focus,
+.form-group textarea:focus {
+    outline: none;
+    border-color: #0D8ABC;
+    box-shadow: 0 0 0 3px rgba(13, 138, 188, 0.12);
+}
+
+.form-control:disabled,
+.input-field:disabled,
+.field input:disabled,
+.field select:disabled,
+.field textarea:disabled,
+.input-group input:disabled,
+.form-group input:disabled {
+    background: #f8fafc;
+    color: #64748b;
+    cursor: not-allowed;
+}
+
+textarea.form-control,
+.field textarea,
+.auth-field textarea {
+    min-height: 80px;
+    resize: vertical;
+    line-height: 1.5;
+}
+
+/* ---------- LABELS ----------------------------------------- */
+
+.field label,
+.auth-field label,
+.input-group label,
+.form-group label {
+    display: block;
+    font-weight: 600;
+    font-size: 0.85rem;
+    color: #334155;
+    margin-bottom: 6px;
+}
+
+/* Asterisk for required fields */
+.req { color: #dc2626; font-weight: 700; }
+
+/* ---------- HELPER STATES ---------------------------------- */
+
+.muted       { color: #64748b; }
+.muted.small,
+.small       { font-size: 0.82rem; }
+
+.empty {
+    text-align: center;
+    padding: 40px 20px;
+    color: #94a3b8;
+}

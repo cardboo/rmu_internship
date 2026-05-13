@@ -26,6 +26,46 @@ $plStmt->execute([$student_id]);
 $placement = $plStmt->fetch(PDO::FETCH_ASSOC) ?: null;
 
 // ----------------------------------------------------------------------
+// Derive the week / day schedule from the placement dates so the
+// logbook form doesn't ask the student to retype anything (item #3).
+//
+//   weeks_info = [
+//     ['n'=>1, 'start'=>'YYYY-MM-DD', 'end'=>'YYYY-MM-DD',
+//      'days'=>[['label'=>'Monday','date'=>'YYYY-MM-DD'], ...]],
+//     ...
+//   ]
+// ----------------------------------------------------------------------
+$weeks_info = [];
+if ($placement) {
+    try {
+        $p_start = new DateTime($placement['start_date']);
+        $p_end   = new DateTime($placement['end_date']);
+        $span    = $p_start->diff($p_end)->days + 1;
+        $weeks_total = (int)ceil($span / 7);
+        for ($w = 1; $w <= $weeks_total; $w++) {
+            $ws = (clone $p_start)->modify('+' . (($w - 1) * 7) . ' days');
+            // Five work days from week-start, clipped to placement end.
+            $we = (clone $ws)->modify('+4 days');
+            if ($we > $p_end) $we = clone $p_end;
+            $days = [];
+            for ($d = 0; $d <= 4; $d++) {
+                $dd = (clone $ws)->modify('+' . $d . ' days');
+                if ($dd > $p_end) break;
+                $days[] = ['label' => $dd->format('l'), 'date' => $dd->format('Y-m-d')];
+            }
+            $weeks_info[] = [
+                'n'     => $w,
+                'start' => $ws->format('Y-m-d'),
+                'end'   => $we->format('Y-m-d'),
+                'days'  => $days,
+            ];
+        }
+    } catch (Exception $e) {
+        $weeks_info = []; // placement has malformed dates — fall back gracefully
+    }
+}
+
+// ----------------------------------------------------------------------
 // Find the editing target if ?id= present, otherwise we're creating new.
 // ----------------------------------------------------------------------
 $editing = null;
@@ -128,44 +168,57 @@ if (($_GET['otp_err'] ?? '') === 'migration') {
 if ($_SERVER['REQUEST_METHOD'] === 'POST'
     && (isset($_POST['save_draft']) || isset($_POST['submit_log']))) {
 
-    if (!$placement) {
-        $flash = ['type' => 'error', 'msg' => 'You need to register a placement before logging weekly entries.'];
+    if (!$placement || empty($weeks_info)) {
+        $flash = ['type' => 'error', 'msg' => 'You need an active placement (with valid start and end dates) before logging weekly entries.'];
     } else {
-        $week        = (int)($_POST['week_number']     ?? 0);
-        $week_start  = trim($_POST['week_start']       ?? '');
-        $week_end    = trim($_POST['week_end']         ?? '');
-        $student_rem = trim($_POST['student_remarks']  ?? '');
-        $log_id      = (int)($_POST['log_id']          ?? 0);  // 0 = new
+        $week        = (int)($_POST['week_number']    ?? 0);
+        $student_rem = trim($_POST['student_remarks'] ?? '');
+        $log_id      = (int)($_POST['log_id']         ?? 0);   // 0 = new
         $finalise    = isset($_POST['submit_log']);
 
-        // Day rows — labels are fixed Mon-Fri.
-        $labels = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'];
-        $days   = [];
-        foreach ($labels as $i => $label) {
-            $d = trim($_POST['day_date'][$i]       ?? '');
-            $a = trim($_POST['day_activities'][$i] ?? '');
-            $days[] = ['label' => $label, 'date' => $d, 'activities' => $a, 'sort' => $i + 1];
+        // Resolve the week — dates are derived from the placement, NOT
+        // the form. This prevents drift between week_number and the dates.
+        $week_def = null;
+        foreach ($weeks_info as $w) {
+            if ($w['n'] === $week) { $week_def = $w; break; }
         }
 
         $err = null;
-        if ($week < 1) {
-            $err = 'Week number is required.';
-        } elseif ($week_start === '' || $week_end === '' || $week_end < $week_start) {
-            $err = 'Provide a valid week-beginning and week-ending date.';
-        } else {
-            // At least one day must have an activity OR the entry is just a draft.
-            $has_any = false;
-            foreach ($days as $d) {
-                if ($d['date'] === '' && $d['activities'] !== '') {
-                    $err = $d['label'] . ' has activities but no date.';
-                    break;
-                }
-                if ($d['activities'] !== '') $has_any = true;
+        if ($week < 1 || !$week_def) {
+            $err = 'Pick a valid week number from the dropdown.';
+        }
+
+        // Duplicate-week guard (skip if we're editing the same row).
+        if (!$err) {
+            $dupStmt = $pdo->prepare("SELECT id FROM logbooks WHERE student_id = ? AND placement_id = ? AND week_number = ? AND id <> ? LIMIT 1");
+            $dupStmt->execute([$student_id, (int)$placement['id'], $week, $log_id]);
+            if ($dupStmt->fetchColumn()) {
+                $err = "You already have a logbook entry for Week $week. Open that one to edit.";
             }
-            if (!$err && $finalise && !$has_any) {
+        }
+
+        // Build the day rows from the placement-derived schedule. Each
+        // row pairs the derived date with the student-typed activity
+        // for that day's textarea ($_POST['day_activities'][i]).
+        $days = [];
+        if (!$err) {
+            $has_any = false;
+            foreach ($week_def['days'] as $i => $d) {
+                $activity = trim($_POST['day_activities'][$i] ?? '');
+                if ($activity !== '') $has_any = true;
+                $days[] = [
+                    'label'      => $d['label'],
+                    'date'       => $d['date'],   // server-derived, NEVER from form
+                    'activities' => $activity,
+                    'sort'       => $i + 1,
+                ];
+            }
+            if ($finalise && !$has_any) {
                 $err = 'Add at least one day of activities before submitting.';
             }
         }
+        $week_start = $week_def['start'] ?? '';
+        $week_end   = $week_def['end']   ?? '';
 
         if (!$err) {
             try {
@@ -342,53 +395,84 @@ if ($editing) {
                     <input type="hidden" name="log_id" value="<?php echo (int)$editing['id']; ?>">
                 <?php endif; ?>
 
+                <?php
+                    // Build sort-indexed map of existing days for edit mode
+                    // (the auto-fill JS fills new rows otherwise).
+                    $by_sort = [];
+                    foreach ($editing_days as $d) $by_sort[(int)$d['sort_order']] = $d;
+                ?>
                 <div class="grid-3">
                     <div class="field">
                         <label>Week Number</label>
-                        <input type="number" name="week_number" min="1" required
-                               value="<?php echo htmlspecialchars((string)$f_week); ?>"
-                               <?php echo $readonly ? 'disabled' : ''; ?>>
+                        <select name="week_number" id="week_select" required
+                                <?php echo $readonly ? 'disabled' : ''; ?>>
+                            <?php foreach ($weeks_info as $w): ?>
+                                <option value="<?php echo (int)$w['n']; ?>"
+                                        data-start="<?php echo htmlspecialchars($w['start']); ?>"
+                                        data-end="<?php echo htmlspecialchars($w['end']); ?>"
+                                        <?php echo ((int)$f_week === (int)$w['n']) ? 'selected' : ''; ?>>
+                                    Week <?php echo (int)$w['n']; ?>
+                                    (<?php echo htmlspecialchars(date('d M', strtotime($w['start']))); ?>
+                                     – <?php echo htmlspecialchars(date('d M Y', strtotime($w['end']))); ?>)
+                                </option>
+                            <?php endforeach; ?>
+                        </select>
+                        <?php if ($readonly): ?>
+                            <input type="hidden" name="week_number" value="<?php echo (int)$f_week; ?>">
+                        <?php endif; ?>
                     </div>
                     <div class="field">
-                        <label>Week Beginning (Monday)</label>
-                        <input type="date" name="week_start" id="week_start" required
-                               value="<?php echo htmlspecialchars($f_start); ?>"
-                               <?php echo $readonly ? 'disabled' : ''; ?>>
+                        <label>Week Beginning</label>
+                        <div class="readonly-chip" id="week_start_disp"><?php echo htmlspecialchars($f_start ?: '—'); ?></div>
                     </div>
                     <div class="field">
-                        <label>Week Ending (Friday)</label>
-                        <input type="date" name="week_end" id="week_end" required
-                               value="<?php echo htmlspecialchars($f_end); ?>"
-                               <?php echo $readonly ? 'disabled' : ''; ?>>
+                        <label>Week Ending</label>
+                        <div class="readonly-chip" id="week_end_disp"><?php echo htmlspecialchars($f_end ?: '—'); ?></div>
                     </div>
                 </div>
 
-                <h4 class="section-h">Daily Activities (Mon–Fri)</h4>
+                <h4 class="section-h">Daily Activities</h4>
+                <p class="muted small" style="margin: -4px 0 8px;">
+                    The day labels and dates are taken from your placement period. Just type what you did.
+                </p>
                 <table class="day-table">
                     <thead>
                         <tr>
-                            <th style="width: 110px;">Day</th>
-                            <th style="width: 160px;">Date</th>
+                            <th style="width: 130px;">Day</th>
+                            <th style="width: 150px;">Date</th>
                             <th>Activities Undertaken</th>
                         </tr>
                     </thead>
                     <tbody>
-                        <?php foreach (['Monday','Tuesday','Wednesday','Thursday','Friday'] as $i => $label): ?>
-                            <?php $row = $by_label[$label] ?? ['day_date' => '', 'activities' => '']; ?>
-                            <tr>
-                                <th><?php echo $label; ?></th>
+                        <?php
+                            // Pick the schedule for the currently-selected week (if any).
+                            $cur_week_def = null;
+                            foreach ($weeks_info as $w) {
+                                if ((int)$w['n'] === (int)$f_week) { $cur_week_def = $w; break; }
+                            }
+                            $schedule = $cur_week_def['days'] ?? [];
+                        ?>
+                        <?php for ($i = 0; $i < 5; $i++):
+                            // Prefer stored data (edit mode), else placement-derived (new mode).
+                            $existing = $by_sort[$i + 1] ?? null;
+                            $label    = $existing['day_label'] ?? ($schedule[$i]['label'] ?? '');
+                            $date     = $existing['day_date']  ?? ($schedule[$i]['date']  ?? '');
+                            $activity = $existing['activities'] ?? '';
+                            $hidden   = ($label === '' && $date === '') ? 'style="display:none;"' : '';
+                        ?>
+                            <tr id="day_row_<?php echo $i; ?>" <?php echo $hidden; ?>>
+                                <th id="day_label_<?php echo $i; ?>"><?php echo htmlspecialchars($label); ?></th>
                                 <td>
-                                    <input type="date" name="day_date[<?php echo $i; ?>]"
-                                           class="day-date"
-                                           value="<?php echo htmlspecialchars($row['day_date']); ?>"
-                                           <?php echo $readonly ? 'disabled' : ''; ?>>
+                                    <span class="day-date readonly-chip" id="day_date_<?php echo $i; ?>">
+                                        <?php echo htmlspecialchars($date ?: '—'); ?>
+                                    </span>
                                 </td>
                                 <td>
                                     <textarea name="day_activities[<?php echo $i; ?>]" rows="2"
-                                              <?php echo $readonly ? 'disabled' : ''; ?>><?php echo htmlspecialchars($row['activities'] ?? ''); ?></textarea>
+                                              <?php echo $readonly ? 'disabled' : ''; ?>><?php echo htmlspecialchars($activity); ?></textarea>
                                 </td>
                             </tr>
-                        <?php endforeach; ?>
+                        <?php endfor; ?>
                     </tbody>
                 </table>
 
@@ -539,26 +623,34 @@ if ($editing) {
 </div>
 
 <script>
-// When the student picks Monday, auto-populate the 5 day dates and the week-ending field.
-const startInput = document.getElementById('week_start');
-const endInput   = document.getElementById('week_end');
-if (startInput) {
-    startInput.addEventListener('change', () => {
-        const v = startInput.value;
-        if (!v) return;
-        const monday = new Date(v + 'T00:00:00');
-        const dayInputs = document.querySelectorAll('.day-date');
-        dayInputs.forEach((el, i) => {
-            const d = new Date(monday);
-            d.setDate(monday.getDate() + i);
-            el.value = d.toISOString().slice(0, 10);
-        });
-        if (endInput && !endInput.value) {
-            const friday = new Date(monday);
-            friday.setDate(monday.getDate() + 4);
-            endInput.value = friday.toISOString().slice(0, 10);
+// When the student picks a week from the dropdown, the day labels +
+// dates (and the week begin/end display) auto-fill from the schedule
+// derived from their placement period (item #3).
+const WEEKS = <?php echo json_encode($weeks_info); ?>;
+const weekSel = document.getElementById('week_select');
+
+function applyWeek(n) {
+    const w = WEEKS.find(x => x.n === Number(n));
+    if (!w) return;
+    document.getElementById('week_start_disp').textContent = w.start;
+    document.getElementById('week_end_disp').textContent   = w.end;
+    for (let i = 0; i < 5; i++) {
+        const row = document.getElementById('day_row_' + i);
+        const lbl = document.getElementById('day_label_' + i);
+        const dt  = document.getElementById('day_date_'  + i);
+        if (!row || !lbl || !dt) continue;
+        if (i < w.days.length) {
+            row.style.display = '';
+            lbl.textContent = w.days[i].label;
+            dt.textContent  = w.days[i].date;
+        } else {
+            row.style.display = 'none';
         }
-    });
+    }
+}
+
+if (weekSel) {
+    weekSel.addEventListener('change', () => applyWeek(weekSel.value));
 }
 </script>
 </body>

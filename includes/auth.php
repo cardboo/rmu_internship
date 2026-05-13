@@ -44,6 +44,22 @@ function rmu_email_error(string $email, ?string $role = null): ?string {
 }
 
 /**
+ * Validate password strength. Returns null if OK, else the first
+ * unmet rule as a human-readable string.
+ *
+ * Rules: >= 8 chars, at least one uppercase, lowercase, digit, and
+ * non-alphanumeric character.
+ */
+function password_strength_error(string $pw): ?string {
+    if (strlen($pw) < 8)                     return 'Password must be at least 8 characters.';
+    if (!preg_match('/[A-Z]/', $pw))         return 'Password must contain at least one uppercase letter.';
+    if (!preg_match('/[a-z]/', $pw))         return 'Password must contain at least one lowercase letter.';
+    if (!preg_match('/\d/', $pw))            return 'Password must contain at least one digit.';
+    if (!preg_match('/[^A-Za-z0-9]/', $pw))  return 'Password must contain at least one special character (e.g. !@#$%).';
+    return null;
+}
+
+/**
  * Generate a readable temporary password.
  * 10 chars: 6 alpha + 4 digits, mixed case, no easily-confused symbols.
  */

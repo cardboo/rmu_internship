@@ -41,6 +41,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['save_placement'])) {
     $start_date         = trim($_POST['start_date']         ?? '');
     $end_date           = trim($_POST['end_date']           ?? '');
 
+    $today = date('Y-m-d');
     $err = null;
     if ($company_name === '' || $company_address === '' || $supervisor_name === ''
         || $supervisor_email === '' || $start_date === '' || $end_date === '') {
@@ -49,6 +50,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['save_placement'])) {
         $err = 'Supervisor email is not a valid address.';
     } elseif ($end_date <= $start_date) {
         $err = 'End date must be after the start date.';
+    } elseif ($start_date < $today) {
+        $err = 'Start date cannot be in the past.';
+    } else {
+        // No overlap with any semester of the current academic year —
+        // the attachment must run during a break, not during teaching.
+        foreach (($cur_year['semesters'] ?? []) as $s) {
+            if ($start_date <= $s['end_date'] && $end_date >= $s['start_date']) {
+                $err = 'Dates overlap with ' . $s['label']
+                     . ' (' . $s['start_date'] . ' to ' . $s['end_date']
+                     . '). Pick dates outside the academic semester.';
+                break;
+            }
+        }
     }
 
     if (!$err) {
@@ -243,17 +257,34 @@ $has_approved_letter = $last_request && $last_request['status'] === 'approved';
             </div>
 
             <h4 class="section-h">Attachment Period</h4>
+            <?php if (!empty($cur_year['semesters'])): ?>
+                <div class="banner banner-warning" style="margin-bottom: 14px;">
+                    <i class="fas fa-info-circle"></i>
+                    Avoid these academic-semester windows:
+                    <?php foreach ($cur_year['semesters'] as $i => $s): ?>
+                        <?php echo $i > 0 ? ' &middot; ' : ' '; ?>
+                        <strong><?php echo htmlspecialchars($s['label']); ?></strong>
+                        (<?php echo htmlspecialchars(date('d M', strtotime($s['start_date']))); ?> –
+                         <?php echo htmlspecialchars(date('d M Y', strtotime($s['end_date']))); ?>)
+                    <?php endforeach; ?>
+                </div>
+            <?php endif; ?>
             <div class="grid-2">
                 <div class="field">
                     <label>Start Date <span class="req">*</span></label>
-                    <input type="date" name="start_date" required
+                    <input type="date" name="start_date" id="pl_start" required
+                           min="<?php echo date('Y-m-d'); ?>"
                            value="<?php echo htmlspecialchars($pre['start_date']); ?>">
                 </div>
                 <div class="field">
                     <label>End Date <span class="req">*</span></label>
-                    <input type="date" name="end_date" required
+                    <input type="date" name="end_date" id="pl_end" required
+                           min="<?php echo date('Y-m-d'); ?>"
                            value="<?php echo htmlspecialchars($pre['end_date']); ?>">
                 </div>
+            </div>
+            <div id="pl_date_warn" style="display:none; background:#fee2e2; color:#991b1b; padding:10px 14px; border-radius:6px; font-size:0.85rem; margin-top:8px;">
+                <i class="fas fa-exclamation-triangle"></i> <span id="pl_date_warn_msg"></span>
             </div>
 
             <div class="form-actions">
@@ -265,6 +296,40 @@ $has_approved_letter = $last_request && $last_request['status'] === 'approved';
             </div>
         </form>
     </div>
+
+    <script>
+    // Live placement-date validation that mirrors the server-side rules.
+    (function () {
+        const SEMS = <?php echo json_encode(array_map(
+            fn($s) => ['label' => $s['label'], 'start' => $s['start_date'], 'end' => $s['end_date']],
+            $cur_year['semesters'] ?? []
+        )); ?>;
+        const TODAY = "<?php echo date('Y-m-d'); ?>";
+        const startIn = document.getElementById('pl_start');
+        const endIn   = document.getElementById('pl_end');
+        const box     = document.getElementById('pl_date_warn');
+        const msg     = document.getElementById('pl_date_warn_msg');
+
+        function check() {
+            const s = startIn.value, e = endIn.value;
+            if (!s || !e) { box.style.display = 'none'; return; }
+            if (e <= s)     { msg.textContent = 'End date must be after the start date.'; box.style.display = 'block'; return; }
+            if (s < TODAY)  { msg.textContent = 'Start date cannot be in the past.';       box.style.display = 'block'; return; }
+            for (const sm of SEMS) {
+                if (s <= sm.end && e >= sm.start) {
+                    msg.innerHTML = 'Dates overlap with <strong>' + sm.label + '</strong> ('
+                                  + sm.start + ' to ' + sm.end + '). Pick dates outside the semester.';
+                    box.style.display = 'block';
+                    return;
+                }
+            }
+            box.style.display = 'none';
+        }
+        startIn.addEventListener('change', check);
+        endIn.addEventListener('change',   check);
+        check();
+    })();
+    </script>
 
     <?php if ($placement): ?>
         <div class="card placement-summary" style="margin-top: 25px;">

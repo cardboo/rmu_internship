@@ -70,6 +70,20 @@
     cursor: not-allowed;
 }
 
+/* ---------- Read-only chips used for derived-date display ---------- */
+.readonly-chip {
+    display: inline-block;
+    background: #f1f5f9;
+    color: #1e293b;
+    padding: 8px 12px;
+    border-radius: 6px;
+    font-size: 0.9rem;
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    border: 1px solid #e2e8f0;
+    min-width: 110px;
+    text-align: center;
+}
+
 /* ---------- Supervisor's remarks block (read-only on student side) ---------- */
 .sup-block {
     background: #fef3c7;

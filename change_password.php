@@ -27,8 +27,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
     if (!$hash || !password_verify($current, $hash)) {
         $error = 'Current password is incorrect.';
-    } elseif (strlen($new) < 8) {
-        $error = 'New password must be at least 8 characters.';
+    } elseif (($pwErr = password_strength_error($new)) !== null) {
+        $error = $pwErr;
     } elseif ($new !== $confirm) {
         $error = 'New password and confirmation do not match.';
     } elseif ($new === $current) {
@@ -93,8 +93,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             </div>
             <div class="auth-field">
                 <label>New Password</label>
-                <input type="password" name="new_password" required minlength="8"
-                       placeholder="At least 8 characters">
+                <input type="password" name="new_password" id="cp_pw" required minlength="8"
+                       placeholder="Minimum 8 chars, mix of cases + digit + symbol">
+                <ul id="pw_checklist" class="pw-checklist">
+                    <li data-rule="len">At least 8 characters</li>
+                    <li data-rule="upper">One uppercase letter (A–Z)</li>
+                    <li data-rule="lower">One lowercase letter (a–z)</li>
+                    <li data-rule="digit">One number (0–9)</li>
+                    <li data-rule="symbol">One symbol (!@#$%…)</li>
+                </ul>
             </div>
             <div class="auth-field">
                 <label>Confirm New Password</label>
@@ -105,6 +112,22 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 <i class="fas fa-check-circle"></i>&nbsp; Update Password
             </button>
         </form>
+
+        <script>
+        const pwIn = document.getElementById('cp_pw');
+        const checks = document.querySelectorAll('#pw_checklist li');
+        pwIn.addEventListener('input', () => {
+            const v = pwIn.value;
+            const tests = {
+                len:    v.length >= 8,
+                upper:  /[A-Z]/.test(v),
+                lower:  /[a-z]/.test(v),
+                digit:  /\d/.test(v),
+                symbol: /[^A-Za-z0-9]/.test(v),
+            };
+            checks.forEach(li => li.classList.toggle('ok', !!tests[li.dataset.rule]));
+        });
+        </script>
 
         <div class="auth-footer">
             <a href="<?php echo BASE_URL; ?>logout.php"><i class="fas fa-sign-out-alt"></i> Logout instead</a>

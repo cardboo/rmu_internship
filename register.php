@@ -30,10 +30,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $err = 'All fields are required.';
     } elseif (($emailErr = rmu_email_error($email, 'student')) !== null) {
         $err = $emailErr;
-    } elseif (strlen($password) < 8) {
-        $err = 'Password must be at least 8 characters.';
     } elseif ($password !== $confirm) {
         $err = 'Passwords do not match.';
+    } elseif (($pwErr = password_strength_error($password)) !== null) {
+        $err = $pwErr;
     }
 
     $reg = null;
@@ -52,6 +52,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $err = "We couldn't find that index number. Contact your department secretary.";
         } elseif ((int)$reg['is_claimed'] === 1) {
             $err = "An account already exists for this index number. Try logging in instead.";
+        } elseif (empty($reg['email'])) {
+            $err = "Your registry record has no email on file. Contact your department secretary to add one before registering.";
+        } elseif (strcasecmp($reg['email'], $email) !== 0) {
+            // Form field is read-only; this catches anyone who bypassed it.
+            $err = "The email on file in the registry doesn't match what was submitted. Please reload the page.";
         }
     }
 
@@ -144,18 +149,27 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             </div>
             <div class="auth-field">
                 <label>RMU Student Email</label>
-                <input type="email" name="email" required
-                       placeholder="j.doe@<?php echo RMU_STUDENT_DOMAIN; ?>"
-                       value="<?php echo htmlspecialchars($preserve['email'] ?? ''); ?>">
+                <input type="email" name="email" id="reg_email" required readonly
+                       placeholder="will populate from your registry record"
+                       value="<?php echo htmlspecialchars($preserve['email'] ?? ''); ?>"
+                       style="background:#f1f5f9;cursor:not-allowed;">
+                <small class="muted small">Auto-filled from the registry record once your index number is recognised.</small>
             </div>
             <div class="auth-field">
                 <label>Password</label>
-                <input type="password" name="password" required minlength="8"
-                       placeholder="At least 8 characters">
+                <input type="password" name="password" id="reg_pw" required minlength="8"
+                       placeholder="Minimum 8 chars, mix of cases + digit + symbol">
+                <ul id="pw_checklist" class="pw-checklist">
+                    <li data-rule="len">At least 8 characters</li>
+                    <li data-rule="upper">One uppercase letter (A–Z)</li>
+                    <li data-rule="lower">One lowercase letter (a–z)</li>
+                    <li data-rule="digit">One number (0–9)</li>
+                    <li data-rule="symbol">One symbol (!@#$%…)</li>
+                </ul>
             </div>
             <div class="auth-field">
                 <label>Confirm Password</label>
-                <input type="password" name="confirm_password" required minlength="8">
+                <input type="password" name="confirm_password" id="reg_pw_confirm" required minlength="8">
             </div>
 
             <button type="submit" class="auth-btn">
@@ -179,6 +193,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     idxIn.addEventListener('input', () => {
         clearTimeout(timer);
         const v = idxIn.value.trim();
+        // Reset the email field while the index is being typed.
+        emailIn.value = '';
         if (v.length < 4) {
             hint.textContent = "We'll verify this against the registry once you fill in your details.";
             hint.style.color = '';
@@ -191,11 +207,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 const r = await fetch(BASE_URL + 'api/registry_lookup.php?public=1&index=' + encodeURIComponent(v));
                 const j = await r.json();
                 if (j.ok) {
-                    hint.textContent = '✓ Found: ' + j.data.full_name + ' — ' + j.data.dept_name;
-                    hint.style.color = '#166534';
-                    // If the registry has an email on file and the user hasn't typed
-                    // one yet, pre-fill it so they don't have to.
-                    if (j.data.email && !emailIn.value) emailIn.value = j.data.email;
+                    if (j.data.email) {
+                        emailIn.value = j.data.email;
+                        hint.textContent = '✓ Found: ' + j.data.full_name + ' — ' + j.data.dept_name;
+                        hint.style.color = '#166534';
+                    } else {
+                        hint.textContent = '⚠ Registry record has no email on file. Ask your department secretary to add one.';
+                        hint.style.color = '#991b1b';
+                    }
                 } else {
                     hint.textContent = '⚠ ' + j.error;
                     hint.style.color = '#991b1b';
@@ -205,6 +224,23 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 hint.style.color = '#991b1b';
             }
         }, 400);
+    });
+
+    // Live password-strength checklist.
+    const pwIn = document.getElementById('reg_pw');
+    const checks = document.querySelectorAll('#pw_checklist li');
+    pwIn.addEventListener('input', () => {
+        const v = pwIn.value;
+        const tests = {
+            len:    v.length >= 8,
+            upper:  /[A-Z]/.test(v),
+            lower:  /[a-z]/.test(v),
+            digit:  /\d/.test(v),
+            symbol: /[^A-Za-z0-9]/.test(v),
+        };
+        checks.forEach(li => {
+            li.classList.toggle('ok', !!tests[li.dataset.rule]);
+        });
     });
     </script>
 </body>

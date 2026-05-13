@@ -81,16 +81,18 @@ if (!function_exists('nav_active')) {
             <a href="<?php echo url('admin/academic_calendar.php'); ?>" class="<?php echo nav_active('admin/academic_calendar.php', $current_path); ?>">
                 <i class="fas fa-calendar-alt"></i>&nbsp;&nbsp;Academic Calendar
             </a>
-            <a href="<?php echo url('admin/settings.php'); ?>" class="<?php echo nav_active('admin/settings.php', $current_path); ?>">
-                <i class="fas fa-cogs"></i>&nbsp;&nbsp;System Settings
-            </a>
         <?php endif; ?>
 
         <?php if ($role === 'secretary'): ?>
             <div class="nav-section">DEPARTMENT</div>
+            <?php /*
+                Per supervisor (item #5): commented out for now —
+                secretary student-registration is paused until the
+                workflow is reviewed.
             <a href="<?php echo url('secretary/register_student.php'); ?>" class="<?php echo nav_active('secretary/register_student.php', $current_path); ?>">
                 <i class="fas fa-user-plus"></i>&nbsp;&nbsp;Register Student
             </a>
+            */ ?>
             <a href="<?php echo url('hod/logbook_review.php'); ?>" class="<?php echo nav_active('hod/logbook_review.php', $current_path); ?>">
                 <i class="fas fa-book-open"></i>&nbsp;&nbsp;Logbook Reviews
             </a>

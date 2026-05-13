@@ -118,12 +118,10 @@ $pdf->Cell(0, 10, 'Date: ' . date('jS F, Y'), 0, 1, 'L');
 $pdf->Ln(5);
 
 // --- Recipient Block ---
-$pdf->SetFont('Arial', '', 11);
 if ($is_twimc) {
-    $pdf->Cell(0, 7, '________________________________________', 0, 1, 'L');
-    $pdf->Cell(0, 7, '________________________________________', 0, 1, 'L');
-    $pdf->Cell(0, 7, '________________________________________', 0, 1, 'L');
-    $pdf->Cell(0, 7, '________________________________________', 0, 1, 'L');
+    // Open letter: address it explicitly rather than leaving blank dashes.
+    $pdf->SetFont('Arial', 'B', 11);
+    $pdf->Cell(0, 7, 'TO WHOM IT MAY CONCERN', 0, 1, 'L');
 } else {
     $pdf->SetFont('Arial', 'B', 11);
     $pdf->Cell(0, 7, strtoupper($data['company_name']), 0, 1, 'L');

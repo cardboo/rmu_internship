@@ -10,67 +10,110 @@ if (!isset($_SESSION['user_id']) || $_SESSION['role'] != 'student') {
 $student_id = $_SESSION['user_id'];
 $message = "";
 
-// Fetch Semester Dates
-$stmt = $pdo->query("SELECT * FROM settings WHERE setting_key IN ('semester_start', 'semester_end')");
-$settings = [];
-while ($row = $stmt->fetch()) {
-    $settings[$row['setting_key']] = $row['setting_value'];
+// Current academic year + its semesters (used for date validation
+// in the request form below; replaces the loose `settings` rows).
+$cur_year_db = current_academic_year($pdo);
+$semesters   = $cur_year_db['semesters'] ?? [];
+
+// For the "active semester" label on the form, pick the semester
+// that contains today's date — fall back to the year's full window.
+$today = date('Y-m-d');
+$active_sem = null;
+foreach ($semesters as $s) {
+    if ($s['start_date'] <= $today && $today <= $s['end_date']) { $active_sem = $s; break; }
 }
-$sem_start = $settings['semester_start'] ?? date('Y-m-d');
-$sem_end = $settings['semester_end'] ?? date('Y-m-d');
+$sem_start = $active_sem['start_date'] ?? ($cur_year_db['start_date'] ?? $today);
+$sem_end   = $active_sem['end_date']   ?? ($cur_year_db['end_date']   ?? $today);
 
 // Handle New Request Submission
 if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['submit_request'])) {
     $is_open = isset($_POST['is_open']) ? 1 : 0;
-    $company = $is_open ? "TO WHOM IT MAY CONCERN" : $_POST['company_name'];
-    $address = $is_open ? "GENERAL SEARCH" : $_POST['company_address'];
-    $start = $_POST['start_date'];
-    $end = $_POST['end_date'];
+    $company = $is_open ? "TO WHOM IT MAY CONCERN" : trim($_POST['company_name']    ?? '');
+    $address = $is_open ? "GENERAL SEARCH"         : trim($_POST['company_address'] ?? '');
+    $start   = trim($_POST['start_date'] ?? '');
+    $end     = trim($_POST['end_date']   ?? '');
 
-    // We removed the PHP hard block here. The system accepts the request regardless of dates.
-    $stmt = $pdo->prepare("INSERT INTO requests (student_id, company_name, company_address, start_date, end_date, status) VALUES (?, ?, ?, ?, ?, 'pending')");
-
-    if ($stmt->execute([$student_id, $company, $address, $start, $end])) {
-        $overlap = ($start <= $sem_end && $end >= $sem_start);
-        if ($overlap) {
-            $message = "<div class='success-banner' style='background: #fef3c7; color: #92400e;'><i class='fas fa-exclamation-circle'></i> Request submitted, but it has been flagged for HOD review because your dates overlap with the active semester.</div>";
-        } else {
-            $message = "<div class='success-banner'><i class='fas fa-check-circle'></i> Request submitted successfully!</div>";
+    // ---------- Server-side validation (item #1) ----------
+    $err = null;
+    if ($start === '' || $end === '') {
+        $err = 'Both start and end dates are required.';
+    } elseif (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $start) || !preg_match('/^\d{4}-\d{2}-\d{2}$/', $end)) {
+        $err = 'Dates must be in YYYY-MM-DD format.';
+    } elseif ($end < $start) {
+        $err = 'End date cannot be before the start date.';
+    } elseif ($start < $today) {
+        $err = 'Start date cannot be in the past.';
+    } elseif (!$is_open && ($company === '' || $address === '')) {
+        $err = 'Company name and address are required (or tick "open letter").';
+    } else {
+        // Reject if the requested period overlaps any semester
+        // of the current academic year — attachments belong in
+        // the breaks between semesters.
+        foreach ($semesters as $s) {
+            if ($start <= $s['end_date'] && $end >= $s['start_date']) {
+                $err = 'Dates overlap with ' . htmlspecialchars($s['label'])
+                     . ' (' . $s['start_date'] . ' to ' . $s['end_date']
+                     . '). Pick dates that fall outside the academic semester.';
+                break;
+            }
         }
+    }
 
-        // ---------- Notify HOD ----------
-        // Pick the HOD for this student's department. Prefer one with a
-        // signature (more likely to be the active HOD); fall back to
-        // any non-archived HOD in the same department.
-        require_once __DIR__ . '/../includes/email.php';
-        $deptStmt = $pdo->prepare("SELECT department FROM users WHERE id = ?");
-        $deptStmt->execute([$student_id]);
-        $student_dept = $deptStmt->fetchColumn();
+    // ---------- Duplicate open-letter block (item #9) ----------
+    if (!$err && $is_open) {
+        $dupStmt = $pdo->prepare("
+            SELECT id FROM requests
+            WHERE student_id  = ?
+              AND status      = 'approved'
+              AND company_name = 'TO WHOM IT MAY CONCERN'
+              AND start_date  = ?
+              AND end_date    = ?
+            LIMIT 1
+        ");
+        $dupStmt->execute([$student_id, $start, $end]);
+        if ($dupStmt->fetchColumn()) {
+            $err = 'You already have an approved open letter for these exact dates. Use the existing one or pick different dates.';
+        }
+    }
 
-        if ($student_dept) {
-            $hodStmt = $pdo->prepare("
-                SELECT email, full_name FROM users
-                WHERE role = 'hod'
-                  AND department = ?
-                  AND COALESCE(is_archived, 0) = 0
-                ORDER BY (signature_path IS NOT NULL AND signature_path <> '') DESC,
-                         id DESC
-                LIMIT 1
-            ");
-            $hodStmt->execute([$student_dept]);
-            if ($hod = $hodStmt->fetch(PDO::FETCH_ASSOC)) {
-                $student_name = $_SESSION['name'] ?? 'A student';
-                $body = "Hello " . htmlspecialchars($hod['full_name']) . ",\n\n"
-                      . htmlspecialchars($student_name) . " has submitted a new industrial attachment request.\n\n"
-                      . "  Company: " . htmlspecialchars($company) . "\n"
-                      . "  Dates:   " . htmlspecialchars($start) . " to " . htmlspecialchars($end) . "\n"
-                      . ($overlap ? "  Note:    Dates overlap the active semester — flagged for review.\n" : "")
-                      . "\nLog in to the RMU Internship Portal to review:\n"
-                      . BASE_URL . "index.php\n\n"
-                      . "— RMU Internship Portal";
-                try_send_email($pdo, $hod['email'],
-                    "New attachment request from $student_name",
-                    $body, false);
+    if ($err) {
+        $message = "<div class='success-banner' style='background:#fee2e2;color:#991b1b;'>"
+                 . "<i class='fas fa-exclamation-circle'></i> " . htmlspecialchars($err) . "</div>";
+    } else {
+        $stmt = $pdo->prepare("INSERT INTO requests (student_id, company_name, company_address, start_date, end_date, status) VALUES (?, ?, ?, ?, ?, 'pending')");
+        if ($stmt->execute([$student_id, $company, $address, $start, $end])) {
+            $message = "<div class='success-banner'><i class='fas fa-check-circle'></i> Request submitted successfully!</div>";
+
+            // ---------- Notify HOD ----------
+            require_once __DIR__ . '/../includes/email.php';
+            $deptStmt = $pdo->prepare("SELECT department FROM users WHERE id = ?");
+            $deptStmt->execute([$student_id]);
+            $student_dept = $deptStmt->fetchColumn();
+
+            if ($student_dept) {
+                $hodStmt = $pdo->prepare("
+                    SELECT email, full_name FROM users
+                    WHERE role = 'hod'
+                      AND department = ?
+                      AND COALESCE(is_archived, 0) = 0
+                    ORDER BY (signature_path IS NOT NULL AND signature_path <> '') DESC,
+                             id DESC
+                    LIMIT 1
+                ");
+                $hodStmt->execute([$student_dept]);
+                if ($hod = $hodStmt->fetch(PDO::FETCH_ASSOC)) {
+                    $student_name = $_SESSION['name'] ?? 'A student';
+                    $body = "Hello " . htmlspecialchars($hod['full_name']) . ",\n\n"
+                          . htmlspecialchars($student_name) . " has submitted a new industrial attachment request.\n\n"
+                          . "  Company: " . htmlspecialchars($company) . "\n"
+                          . "  Dates:   " . htmlspecialchars($start) . " to " . htmlspecialchars($end) . "\n"
+                          . "\nLog in to the RMU Internship Portal to review:\n"
+                          . BASE_URL . "index.php\n\n"
+                          . "— RMU Internship Portal";
+                    try_send_email($pdo, $hod['email'],
+                        "New attachment request from $student_name",
+                        $body, false);
+                }
             }
         }
     }
@@ -82,7 +125,7 @@ $stmt->execute([$student_id]);
 $my_requests = $stmt->fetchAll();
 
 // Fetch current placement (if any) for current academic year.
-$cur_year_db = current_academic_year($pdo);
+// ($cur_year_db was already fetched at the top of the file.)
 $placement = null;
 $pStmt = $pdo->prepare("
     SELECT * FROM placements
@@ -141,12 +184,21 @@ if ($placement) {
         <?php echo $message; ?>
 
         <div class="form-card">
-            <div class="info-note">
-                <i class="fas fa-info-circle"></i> Active Academic Semester: <strong><?php echo date('M d, Y', strtotime($sem_start)); ?> to <?php echo date('M d, Y', strtotime($sem_end)); ?></strong>. Standard attachments should fall outside these dates.
-            </div>
+            <?php if (!empty($semesters)): ?>
+                <div class="info-note">
+                    <i class="fas fa-info-circle"></i>
+                    Current semester windows you must <strong>avoid</strong>:
+                    <?php foreach ($semesters as $i => $s): ?>
+                        <?php echo $i > 0 ? ' &middot; ' : ' '; ?>
+                        <strong><?php echo htmlspecialchars($s['label']); ?></strong>
+                        (<?php echo htmlspecialchars(date('d M', strtotime($s['start_date']))); ?> –
+                         <?php echo htmlspecialchars(date('d M Y', strtotime($s['end_date']))); ?>)
+                    <?php endforeach; ?>
+                </div>
+            <?php endif; ?>
 
-            <div id="dateWarning">
-                <i class="fas fa-exclamation-triangle"></i> <strong>Warning:</strong> You have selected dates during the active semester. Your request will be flagged for special review by your HOD.
+            <div id="dateWarning" style="display:none; background: #fee2e2; color: #991b1b; padding: 10px; border-radius: 5px; font-size: 0.85rem; margin-bottom: 15px; border-left: 4px solid #ef4444;">
+                <i class="fas fa-exclamation-triangle"></i> <span id="dateWarningMsg"></span>
             </div>
 
             <form action="" method="POST" id="requestForm" onsubmit="return validateForm()">
@@ -169,11 +221,15 @@ if ($placement) {
                 <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-bottom: 20px;">
                     <div>
                         <label>Proposed Start Date</label>
-                        <input type="date" name="start_date" id="start_date" required class="input-field" onchange="checkDateOverlap()">
+                        <input type="date" name="start_date" id="start_date" required class="input-field"
+                               min="<?php echo $today; ?>"
+                               onchange="checkDateOverlap()">
                     </div>
                     <div>
                         <label>Proposed End Date</label>
-                        <input type="date" name="end_date" id="end_date" required class="input-field" onchange="checkDateOverlap()">
+                        <input type="date" name="end_date" id="end_date" required class="input-field"
+                               min="<?php echo $today; ?>"
+                               onchange="checkDateOverlap()">
                     </div>
                 </div>
 
@@ -293,15 +349,19 @@ if ($placement) {
     </div>
 
     <script>
-    const semStart = new Date("<?php echo $sem_start; ?>");
-    const semEnd = new Date("<?php echo $sem_end; ?>");
+    // All semester windows of the current academic year — request dates
+    // must NOT overlap any of these.
+    const SEMESTERS = <?php echo json_encode(array_map(
+        fn($s) => ['label' => $s['label'], 'start' => $s['start_date'], 'end' => $s['end_date']],
+        $semesters
+    )); ?>;
+    const TODAY = "<?php echo $today; ?>";
 
     function toggleCompanyFields(checkbox) {
         const fields = document.getElementById('company_info');
         const nameInput = document.getElementById('c_name');
         const addrInput = document.getElementById('c_addr');
-        
-        if(checkbox.checked) {
+        if (checkbox.checked) {
             fields.style.display = 'none';
             nameInput.required = false;
             addrInput.required = false;
@@ -312,32 +372,52 @@ if ($placement) {
         }
     }
 
-    function checkDateOverlap() {
-        const startVal = document.getElementById('start_date').value;
-        const endVal = document.getElementById('end_date').value;
-        const warningBox = document.getElementById('dateWarning');
-
-        if (!startVal || !endVal) return;
-
-        const reqStart = new Date(startVal);
-        const reqEnd = new Date(endVal);
-
-        if (reqStart <= semEnd && reqEnd >= semStart) {
-            warningBox.style.display = 'block';
-        } else {
-            warningBox.style.display = 'none';
+    function clashingSemester(startStr, endStr) {
+        for (const s of SEMESTERS) {
+            if (startStr <= s.end && endStr >= s.start) return s;
         }
+        return null;
+    }
+
+    function checkDateOverlap() {
+        const start = document.getElementById('start_date').value;
+        const end   = document.getElementById('end_date').value;
+        const box   = document.getElementById('dateWarning');
+        const msg   = document.getElementById('dateWarningMsg');
+        if (!start || !end) { box.style.display = 'none'; return; }
+
+        if (end < start) {
+            msg.textContent = 'End date cannot be before the start date.';
+            box.style.display = 'block';
+            return;
+        }
+        if (start < TODAY) {
+            msg.textContent = 'Start date cannot be in the past.';
+            box.style.display = 'block';
+            return;
+        }
+        const clash = clashingSemester(start, end);
+        if (clash) {
+            msg.innerHTML = 'Dates overlap with <strong>' + clash.label + '</strong> ('
+                          + clash.start + ' to ' + clash.end + '). Pick dates outside the semester.';
+            box.style.display = 'block';
+            return;
+        }
+        box.style.display = 'none';
     }
 
     function validateForm() {
-        const startInput = document.getElementById('start_date').value;
-        const endInput = document.getElementById('end_date').value;
-        
-        if (new Date(endInput) < new Date(startInput)) {
-            alert("End date cannot be before the start date.");
-            return false; // Still hard block impossible time travel
+        const start = document.getElementById('start_date').value;
+        const end   = document.getElementById('end_date').value;
+        if (!start || !end)            { alert('Pick both start and end dates.'); return false; }
+        if (end < start)               { alert('End date cannot be before the start date.'); return false; }
+        if (start < TODAY)             { alert('Start date cannot be in the past.'); return false; }
+        const clash = clashingSemester(start, end);
+        if (clash) {
+            alert('Dates overlap with ' + clash.label + ' (' + clash.start + ' to ' + clash.end + '). Pick dates outside the semester.');
+            return false;
         }
-        return true; 
+        return true;
     }
     </script>
 </body>

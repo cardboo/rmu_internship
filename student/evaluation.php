@@ -241,14 +241,18 @@ if (($_GET['otp_err']   ?? '') === 'migration') $flash = ['type' => 'error', 'ms
             <h3><i class="fas fa-clipboard-check"></i>&nbsp; Assessment Scheme</h3>
             <p class="muted small">Score each criterion within its allowed range. Total marks add up to 50.</p>
 
-            <form method="POST" autocomplete="off">
+            <form method="POST" autocomplete="off" class="otp-gated-form">
                 <div class="grid-2" style="margin-bottom: 14px;">
                     <div class="field">
                         <label>6-digit code <span class="req">*</span></label>
-                        <input type="text" name="sup_otp" inputmode="numeric" pattern="\d{6}" maxlength="6" required placeholder="000000">
+                        <input type="text" name="sup_otp" class="otp-input"
+                               inputmode="numeric" pattern="\d{6}" maxlength="6" required
+                               autocomplete="off" placeholder="000000">
+                        <small class="muted small">All score and identity fields unlock once the code is fully entered.</small>
                     </div>
                 </div>
 
+                <fieldset class="otp-locked" disabled style="border:none; padding:0; margin:0; opacity:0.55;">
                 <table class="eval-table">
                     <thead>
                         <tr>
@@ -304,6 +308,7 @@ if (($_GET['otp_err']   ?? '') === 'migration') $flash = ['type' => 'error', 'ms
                         <i class="fas fa-lock"></i>&nbsp; Submit &amp; Lock
                     </button>
                 </div>
+                </fieldset>
             </form>
         </div>
     <?php endif; ?>
@@ -322,6 +327,24 @@ function recalc() {
     total.textContent = sum;
 }
 inputs.forEach(i => i.addEventListener('input', recalc));
+
+// OTP-gated fields: until the 6-digit code has been typed in full,
+// the score + identity fieldset stays disabled (item #4). Final
+// verification still happens server-side at submit.
+document.querySelectorAll('.otp-gated-form').forEach(form => {
+    const otp  = form.querySelector('.otp-input');
+    const lock = form.querySelector('.otp-locked');
+    if (!otp || !lock) return;
+    const refresh = () => {
+        const v = (otp.value || '').replace(/\D/g, '').slice(0, 6);
+        otp.value = v;
+        const ok = v.length === 6;
+        lock.disabled    = !ok;
+        lock.style.opacity = ok ? '1' : '0.55';
+    };
+    otp.addEventListener('input', refresh);
+    refresh();
+});
 </script>
 </body>
 </html>

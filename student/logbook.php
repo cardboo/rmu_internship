@@ -515,35 +515,40 @@ if ($editing) {
                                 </button>
                             </form>
 
-                            <form method="POST" style="margin-top: 16px;">
-                                <div class="grid-2">
-                                    <div class="field">
-                                        <label>6-digit code <span class="req">*</span></label>
-                                        <input type="text" name="sup_otp" inputmode="numeric"
-                                               pattern="\d{6}" maxlength="6" required
-                                               placeholder="000000">
-                                    </div>
-                                    <div class="field">
-                                        <label>Supervisor's name <span class="req">*</span></label>
-                                        <input type="text" name="sup_name" required
-                                               value="<?php echo htmlspecialchars($placement['supervisor_name'] ?? ''); ?>">
-                                    </div>
-                                    <div class="field">
-                                        <label>Title / status</label>
-                                        <input type="text" name="sup_status"
-                                               value="<?php echo htmlspecialchars($placement['supervisor_title'] ?? ''); ?>">
-                                    </div>
-                                </div>
+                            <form method="POST" style="margin-top: 16px;" class="otp-gated-form">
                                 <div class="field">
-                                    <label>Remarks</label>
-                                    <textarea name="sup_remarks" rows="3"
-                                              placeholder="What you observed about the student's work this week..."></textarea>
+                                    <label>6-digit code <span class="req">*</span></label>
+                                    <input type="text" name="sup_otp" class="otp-input" inputmode="numeric"
+                                           pattern="\d{6}" maxlength="6" required
+                                           autocomplete="off"
+                                           placeholder="000000">
+                                    <small class="muted small">Other fields unlock once the code is fully entered.</small>
                                 </div>
-                                <div class="form-actions">
-                                    <button type="submit" name="sup_submit_remarks" class="btn btn-primary">
-                                        <i class="fas fa-lock"></i>&nbsp; Sign &amp; Lock Week
-                                    </button>
-                                </div>
+
+                                <fieldset class="otp-locked" disabled style="border:none; padding:0; margin:0; opacity:0.55;">
+                                    <div class="grid-2">
+                                        <div class="field">
+                                            <label>Supervisor's name <span class="req">*</span></label>
+                                            <input type="text" name="sup_name" required
+                                                   value="<?php echo htmlspecialchars($placement['supervisor_name'] ?? ''); ?>">
+                                        </div>
+                                        <div class="field">
+                                            <label>Title / status</label>
+                                            <input type="text" name="sup_status"
+                                                   value="<?php echo htmlspecialchars($placement['supervisor_title'] ?? ''); ?>">
+                                        </div>
+                                    </div>
+                                    <div class="field">
+                                        <label>Remarks</label>
+                                        <textarea name="sup_remarks" rows="3"
+                                                  placeholder="What you observed about the student's work this week..."></textarea>
+                                    </div>
+                                    <div class="form-actions">
+                                        <button type="submit" name="sup_submit_remarks" class="btn btn-primary">
+                                            <i class="fas fa-lock"></i>&nbsp; Sign &amp; Lock Week
+                                        </button>
+                                    </div>
+                                </fieldset>
                             </form>
                         </div>
                     <?php endif; ?>
@@ -652,6 +657,24 @@ function applyWeek(n) {
 if (weekSel) {
     weekSel.addEventListener('change', () => applyWeek(weekSel.value));
 }
+
+// OTP-gated fields: until the OTP input has 6 digits, the rest of the
+// supervisor sign-off form is disabled (item #4). Final verification
+// still happens server-side at submit.
+document.querySelectorAll('.otp-gated-form').forEach(form => {
+    const otp  = form.querySelector('.otp-input');
+    const lock = form.querySelector('.otp-locked');
+    if (!otp || !lock) return;
+    const refresh = () => {
+        const v = (otp.value || '').replace(/\D/g, '').slice(0, 6);
+        otp.value = v;
+        const ok = v.length === 6;
+        lock.disabled    = !ok;
+        lock.style.opacity = ok ? '1' : '0.55';
+    };
+    otp.addEventListener('input', refresh);
+    refresh();
+});
 </script>
 </body>
 </html>

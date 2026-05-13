@@ -118,6 +118,7 @@ $open_student = isset($_GET['student']) ? (int)$_GET['student'] : 0;
     <link rel="stylesheet" href="<?php echo asset('css/users.css'); ?>">
     <link rel="stylesheet" href="<?php echo asset('css/dashboards.css'); ?>">
     <link rel="stylesheet" href="<?php echo asset('css/logbook.css'); ?>">
+    <link rel="stylesheet" href="<?php echo asset('css/reports.css'); ?>">
     <style>
         @media print {
             .sidebar, .filter-bar, .actions-col, .modal-print-hide { display: none !important; }
@@ -132,6 +133,7 @@ $open_student = isset($_GET['student']) ? (int)$_GET['student'] : 0;
 <?php include __DIR__ . '/../includes/sidebar.php'; ?>
 
 <div class="main-content">
+    <?php $report_title = htmlspecialchars($myDept) . ' — Logbook Reviews'; include __DIR__ . '/../includes/print_header.php'; ?>
     <div class="header-panel">
         <div>
             <h1><?php echo htmlspecialchars($myDept); ?> Logbook Reviews</h1>

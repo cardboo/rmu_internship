@@ -118,6 +118,7 @@ $PIPELINE_LABELS = [
 <?php include __DIR__ . '/../includes/sidebar.php'; ?>
 
 <div class="main-content">
+    <?php $report_title = 'System-wide Internship Report'; include __DIR__ . '/../includes/print_header.php'; ?>
     <div class="header-panel">
         <div>
             <h1>System-wide Internship Report</h1>

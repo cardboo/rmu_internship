@@ -76,15 +76,57 @@
 .kpi-card.warn  { border-left: 4px solid #d97706; }
 .kpi-card.err   { border-left: 4px solid #dc2626; }
 
-/* ---------- Print rules: clean A4 layout ---------- */
+/* ---------- Print-only header (RMU logo + name + report title) ---------- */
+.print-header { display: none; }
+
 @media print {
-    body              { background: white !important; }
+    @page { margin: 14mm 12mm; }
+    body              { background: white !important; font-size: 11pt; }
     .sidebar,
     .filter-bar,
+    .header-panel,
+    .kpi-row,
     .modal-print-hide { display: none !important; }
     .main-content     { margin-left: 0 !important; padding: 0 !important; }
     .card, .kpi-card  { box-shadow: none !important; border: 1px solid #94a3b8 !important; }
-    .report-table     { font-size: 0.75rem; }
+    .report-table     { font-size: 9pt; page-break-inside: auto; }
+    .report-table tr  { page-break-inside: avoid; }
     .report-table th  { background: white !important; color: black !important; border-bottom: 1px solid #000; }
     a                 { color: inherit !important; text-decoration: none !important; }
+
+    /* The print-only RMU header */
+    .print-header {
+        display: flex !important;
+        align-items: center;
+        gap: 14px;
+        padding: 0 0 10px;
+        margin-bottom: 14px;
+        border-bottom: 2px solid #0f172a;
+    }
+    .print-header img {
+        width: 60px;
+        height: 60px;
+        object-fit: contain;
+    }
+    .print-header-text {
+        flex: 1;
+        line-height: 1.25;
+    }
+    .print-header-text strong {
+        display: block;
+        font-size: 14pt;
+        letter-spacing: 0.4px;
+    }
+    .print-header-sub {
+        font-size: 10pt;
+        color: #475569;
+        margin-top: 2px;
+    }
+    .print-header-meta {
+        text-align: right;
+        font-size: 9pt;
+        line-height: 1.35;
+        color: #1e293b;
+    }
+    .print-header-meta strong { display: block; }
 }

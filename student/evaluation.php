@@ -317,6 +317,20 @@ if (($_GET['otp_err']   ?? '') === 'migration') $flash = ['type' => 'error', 'ms
 <script>
 const inputs = document.querySelectorAll('.score-input');
 const total  = document.getElementById('total_display');
+
+// Hard-cap each score to its per-criterion max (item #2). The `max=`
+// HTML attribute only kicks in on submit; we also clamp live while
+// the supervisor is typing so a value > max can never be shown,
+// pasted, or persisted.
+function clampScore(el) {
+    const max = parseInt(el.dataset.max || el.max || '0', 10);
+    let v = el.value.replace(/\D/g, '');           // digits only
+    if (v === '') { el.value = ''; return; }
+    let n = parseInt(v, 10);
+    if (n > max) n = max;
+    if (n < 0)   n = 0;
+    el.value = String(n);
+}
 function recalc() {
     if (!total) return;
     let sum = 0;
@@ -326,7 +340,10 @@ function recalc() {
     });
     total.textContent = sum;
 }
-inputs.forEach(i => i.addEventListener('input', recalc));
+inputs.forEach(i => {
+    i.addEventListener('input', () => { clampScore(i); recalc(); });
+    i.addEventListener('blur',  () => { clampScore(i); recalc(); });
+});
 
 // OTP-gated fields: until the 6-digit code has been typed in full,
 // the score + identity fieldset stays disabled (item #4). Final

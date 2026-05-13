@@ -94,6 +94,7 @@ $CRITERIA = [
     <link rel="stylesheet" href="<?php echo asset('css/users.css'); ?>">
     <link rel="stylesheet" href="<?php echo asset('css/dashboards.css'); ?>">
     <link rel="stylesheet" href="<?php echo asset('css/evaluation.css'); ?>">
+    <link rel="stylesheet" href="<?php echo asset('css/reports.css'); ?>">
     <style>
         @media print {
             .sidebar, .header-panel a, .filter-bar, .actions-col,
@@ -107,6 +108,7 @@ $CRITERIA = [
 <?php include __DIR__ . '/../includes/sidebar.php'; ?>
 
 <div class="main-content">
+    <?php $report_title = htmlspecialchars($myDept) . ' — Final Evaluations'; include __DIR__ . '/../includes/print_header.php'; ?>
     <div class="header-panel">
         <div>
             <h1><?php echo htmlspecialchars($myDept); ?> Final Evaluations</h1>

@@ -70,6 +70,7 @@ $CRITERIA = [
 <?php include __DIR__ . '/../includes/sidebar.php'; ?>
 
 <div class="main-content">
+    <?php $report_title = 'Industrial Attachment Transcript — ' . htmlspecialchars($me['full_name'] ?? ''); include __DIR__ . '/../includes/print_header.php'; ?>
     <div class="header-panel">
         <div>
             <h1>My Internship Transcript</h1>

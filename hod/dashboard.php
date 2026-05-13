@@ -225,6 +225,12 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['update_id'])) {
             <div class="modal-body" id="modalBody"></div>
             <div class="modal-footer">
                 <button class="btn-action" style="background:#e2e8f0; color:#475569;" onclick="closeModal()">Close</button>
+                <button id="modalReject" style="display:none; background:#ef4444; color:white; border:none; padding:8px 14px; border-radius:6px; cursor:pointer; font-weight:600;" onclick="modalReject()">
+                    <i class="fas fa-times"></i>&nbsp; Reject
+                </button>
+                <button id="modalApprove" style="display:none; background:#16a34a; color:white; border:none; padding:8px 14px; border-radius:6px; cursor:pointer; font-weight:600;" onclick="modalApprove()">
+                    <i class="fas fa-check"></i>&nbsp; Approve
+                </button>
                 <a id="modalDownload" href="#" target="_blank" class="btn-action" style="background:#0D8ABC; color:white; display:none;">
                     <i class="fas fa-file-pdf"></i>&nbsp; Download Letter
                 </a>
@@ -233,7 +239,8 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['update_id'])) {
     </div>
 
     <script>
-    const BASE_URL = <?php echo json_encode(BASE_URL); ?>;
+    const BASE_URL      = <?php echo json_encode(BASE_URL); ?>;
+    const HAS_SIGNATURE = <?php echo json_encode((bool)$hasSignature); ?>;
 
     function escapeHtml(s) {
         if (s === null || s === undefined) return '—';
@@ -324,7 +331,44 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['update_id'])) {
             dl.style.display = 'none';
         }
 
+        // Approve / Reject buttons in the modal, only for pending requests.
+        // Approve only enabled when HOD has a signature on file.
+        const approveBtn = document.getElementById('modalApprove');
+        const rejectBtn  = document.getElementById('modalReject');
+        if (data.status === 'pending') {
+            approveBtn.style.display = '';
+            rejectBtn.style.display  = '';
+            approveBtn.dataset.reqId = data.id;
+            rejectBtn.dataset.reqId  = data.id;
+            if (!HAS_SIGNATURE) {
+                approveBtn.disabled = true;
+                approveBtn.title    = 'Upload your signature first';
+                approveBtn.style.opacity = '0.5';
+                approveBtn.style.cursor  = 'not-allowed';
+            } else {
+                approveBtn.disabled = false;
+                approveBtn.title    = '';
+                approveBtn.style.opacity = '1';
+                approveBtn.style.cursor  = 'pointer';
+            }
+        } else {
+            approveBtn.style.display = 'none';
+            rejectBtn.style.display  = 'none';
+        }
+
         document.getElementById('detailsModal').classList.add('open');
+    }
+
+    function modalApprove() {
+        const id = document.getElementById('modalApprove').dataset.reqId;
+        if (!id) return;
+        if (!HAS_SIGNATURE) { alert('Upload your signature in Profile Settings first.'); return; }
+        updateStatus(id, 'approved');
+    }
+    function modalReject() {
+        const id = document.getElementById('modalReject').dataset.reqId;
+        if (!id) return;
+        rejectWithComment(id);
     }
 
     // 2. Close Modal

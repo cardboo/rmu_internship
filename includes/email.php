@@ -7,7 +7,8 @@
  */
 
 const SMTP_HOST         = 'smtp.gmail.com';
-const SMTP_PORT         = 587;
+const SMTP_PORT         = 465;
+const SMTP_SECURE       = 'ssl';                     // 'ssl' (port 465) or 'tls' (port 587)
 const SMTP_USER         = 'isabdulaisaiku@gmail.com';
 const SMTP_PASS         = 'twkurtspdegwanpu';        // Gmail app password
 const SMTP_FROM_ADDRESS = 'isabdulaisaiku@gmail.com';
@@ -64,7 +65,9 @@ if (!function_exists('send_email')) {
             $mail->SMTPAuth   = true;
             $mail->Username   = SMTP_USER;
             $mail->Password   = SMTP_PASS;
-            $mail->SMTPSecure = \PHPMailer\PHPMailer\PHPMailer::ENCRYPTION_STARTTLS;
+            $mail->SMTPSecure = (SMTP_SECURE === 'ssl')
+                ? \PHPMailer\PHPMailer\PHPMailer::ENCRYPTION_SMTPS       // implicit SSL (port 465)
+                : \PHPMailer\PHPMailer\PHPMailer::ENCRYPTION_STARTTLS;   // STARTTLS (port 587)
             $mail->Port       = SMTP_PORT;
             $mail->Timeout    = 20;
             $mail->CharSet    = 'UTF-8';

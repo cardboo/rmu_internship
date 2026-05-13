@@ -1,0 +1,90 @@
+/* ============================================================
+   Reports pages — admin/reports, hod/reports, student/transcript
+   ============================================================ */
+
+.report-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.9rem;
+}
+.report-table th {
+    text-align: left;
+    background: #f8fafc;
+    color: #475569;
+    font-weight: 600;
+    padding: 10px 12px;
+    border-bottom: 1px solid #e2e8f0;
+    font-size: 0.75rem;
+    text-transform: uppercase;
+    letter-spacing: 0.4px;
+}
+.report-table td {
+    padding: 10px 12px;
+    border-bottom: 1px solid #f1f5f9;
+    vertical-align: top;
+}
+.report-table tr:last-child td { border-bottom: none; }
+.report-table tr:hover { background: #fafbfc; }
+.report-table .num { text-align: right; font-variant-numeric: tabular-nums; }
+
+/* ---------- Pipeline pill for the "where in the lifecycle" column ---------- */
+.pipeline {
+    display: inline-block;
+    padding: 3px 10px;
+    border-radius: 999px;
+    font-size: 0.7rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.4px;
+}
+.pipeline-none       { background: #e2e8f0; color: #475569; }
+.pipeline-requested  { background: #fef3c7; color: #92400e; }
+.pipeline-approved   { background: #dbeafe; color: #1e3a8a; }
+.pipeline-placed     { background: #cffafe; color: #155e75; }
+.pipeline-logging    { background: #ede9fe; color: #5b21b6; }
+.pipeline-completed  { background: #dcfce7; color: #166534; }
+.pipeline-rejected   { background: #fee2e2; color: #991b1b; }
+
+/* ---------- KPI summary cards across the top of a report ---------- */
+.kpi-row {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+    gap: 12px;
+    margin-bottom: 18px;
+}
+.kpi-card {
+    background: white;
+    border: 1px solid #e2e8f0;
+    border-radius: 10px;
+    padding: 14px 16px;
+}
+.kpi-card .kpi-label {
+    font-size: 0.7rem;
+    text-transform: uppercase;
+    letter-spacing: 0.4px;
+    color: #64748b;
+    font-weight: 700;
+}
+.kpi-card .kpi-value {
+    font-size: 1.6rem;
+    font-weight: 800;
+    color: #0f172a;
+    margin-top: 4px;
+}
+.kpi-card.accent { border-left: 4px solid #0D8ABC; }
+.kpi-card.ok    { border-left: 4px solid #16a34a; }
+.kpi-card.warn  { border-left: 4px solid #d97706; }
+.kpi-card.err   { border-left: 4px solid #dc2626; }
+
+/* ---------- Print rules: clean A4 layout ---------- */
+@media print {
+    body              { background: white !important; }
+    .sidebar,
+    .filter-bar,
+    .modal-print-hide { display: none !important; }
+    .main-content     { margin-left: 0 !important; padding: 0 !important; }
+    .card, .kpi-card  { box-shadow: none !important; border: 1px solid #94a3b8 !important; }
+    .report-table     { font-size: 0.75rem; }
+    .report-table th  { background: white !important; color: black !important; border-bottom: 1px solid #000; }
+    a                 { color: inherit !important; text-decoration: none !important; }
+}

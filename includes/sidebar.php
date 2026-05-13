@@ -81,6 +81,9 @@ if (!function_exists('nav_active')) {
             <a href="<?php echo url('admin/academic_calendar.php'); ?>" class="<?php echo nav_active('admin/academic_calendar.php', $current_path); ?>">
                 <i class="fas fa-calendar-alt"></i>&nbsp;&nbsp;Academic Calendar
             </a>
+            <a href="<?php echo url('admin/reports.php'); ?>" class="<?php echo nav_active('admin/reports.php', $current_path); ?>">
+                <i class="fas fa-chart-line"></i>&nbsp;&nbsp;Reports
+            </a>
         <?php endif; ?>
 
         <?php if ($role === 'secretary'): ?>
@@ -99,6 +102,9 @@ if (!function_exists('nav_active')) {
             <a href="<?php echo url('hod/evaluations.php'); ?>" class="<?php echo nav_active('hod/evaluations.php', $current_path); ?>">
                 <i class="fas fa-clipboard-check"></i>&nbsp;&nbsp;Evaluations
             </a>
+            <a href="<?php echo url('hod/reports.php'); ?>" class="<?php echo nav_active('hod/reports.php', $current_path); ?>">
+                <i class="fas fa-chart-line"></i>&nbsp;&nbsp;Reports
+            </a>
         <?php endif; ?>
 
         <?php if ($role === 'hod'): ?>
@@ -108,6 +114,9 @@ if (!function_exists('nav_active')) {
             </a>
             <a href="<?php echo url('hod/evaluations.php'); ?>" class="<?php echo nav_active('hod/evaluations.php', $current_path); ?>">
                 <i class="fas fa-clipboard-check"></i>&nbsp;&nbsp;Evaluations
+            </a>
+            <a href="<?php echo url('hod/reports.php'); ?>" class="<?php echo nav_active('hod/reports.php', $current_path); ?>">
+                <i class="fas fa-chart-line"></i>&nbsp;&nbsp;Reports
             </a>
         <?php endif; ?>
 
@@ -121,6 +130,9 @@ if (!function_exists('nav_active')) {
             </a>
             <a href="<?php echo url('student/evaluation.php'); ?>" class="<?php echo nav_active('student/evaluation.php', $current_path); ?>">
                 <i class="fas fa-clipboard-check"></i>&nbsp;&nbsp;Final Evaluation
+            </a>
+            <a href="<?php echo url('student/transcript.php'); ?>" class="<?php echo nav_active('student/transcript.php', $current_path); ?>">
+                <i class="fas fa-file-alt"></i>&nbsp;&nbsp;My Transcript
             </a>
         <?php endif; ?>
 

@@ -72,6 +72,22 @@ if (!function_exists('send_email')) {
             $mail->Timeout    = 20;
             $mail->CharSet    = 'UTF-8';
 
+            // Local-dev TLS bypass: Windows PHP ships without a CA bundle,
+            // so OpenSSL can't verify Gmail's certificate chain by default
+            // ("certificate verify failed"). The connection is still
+            // STARTTLS-encrypted — only the chain validation is skipped.
+            //
+            // For production, the proper fix is to set curl.cainfo and
+            // openssl.cafile in php.ini to a cacert.pem from
+            // https://curl.se/ca/cacert.pem and remove this block.
+            $mail->SMTPOptions = [
+                'ssl' => [
+                    'verify_peer'       => false,
+                    'verify_peer_name'  => false,
+                    'allow_self_signed' => true,
+                ],
+            ];
+
             $mail->setFrom(SMTP_FROM_ADDRESS, SMTP_FROM_NAME);
             $mail->addAddress($to);
             $mail->Subject = $subject;

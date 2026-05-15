@@ -241,14 +241,16 @@ if (($_GET['otp_err']   ?? '') === 'migration') $flash = ['type' => 'error', 'ms
             <h3><i class="fas fa-clipboard-check"></i>&nbsp; Assessment Scheme</h3>
             <p class="muted small">Score each criterion within its allowed range. Total marks add up to 50.</p>
 
-            <form method="POST" autocomplete="off" class="otp-gated-form">
+            <form method="POST" autocomplete="off" class="otp-gated-form"
+                  data-placement-id="<?php echo (int)$placement['id']; ?>"
+                  data-purpose="evaluation">
                 <div class="grid-2" style="margin-bottom: 14px;">
                     <div class="field">
                         <label>6-digit code <span class="req">*</span></label>
                         <input type="text" name="sup_otp" class="otp-input"
                                inputmode="numeric" pattern="\d{6}" maxlength="6" required
                                autocomplete="off" placeholder="000000">
-                        <small class="muted small">All score and identity fields unlock once the code is fully entered.</small>
+                        <small class="otp-status muted small">Score and identity fields unlock once the correct code is verified.</small>
                     </div>
                 </div>
 
@@ -345,20 +347,56 @@ inputs.forEach(i => {
     i.addEventListener('blur',  () => { clampScore(i); recalc(); });
 });
 
-// OTP-gated fields: until the 6-digit code has been typed in full,
-// the score + identity fieldset stays disabled (item #4). Final
-// verification still happens server-side at submit.
+// OTP-gated fields: only unlock when the entered code actually
+// matches a live (unconsumed, unexpired) OTP on the server. Peek
+// via api/check_supervisor_otp.php (doesn't consume). Final
+// consumption happens server-side at submit time.
+const BASE_URL_EV = <?php echo json_encode(BASE_URL); ?>;
 document.querySelectorAll('.otp-gated-form').forEach(form => {
-    const otp  = form.querySelector('.otp-input');
-    const lock = form.querySelector('.otp-locked');
-    if (!otp || !lock) return;
-    const refresh = () => {
+    const otp         = form.querySelector('.otp-input');
+    const lock        = form.querySelector('.otp-locked');
+    const statusEl    = form.querySelector('.otp-status');
+    const placementId = form.dataset.placementId;
+    const purpose     = form.dataset.purpose;
+    if (!otp || !lock || !placementId || !purpose) return;
+
+    let timer;
+    function lockFields(ok, msg, colour) {
+        lock.disabled      = !ok;
+        lock.style.opacity = ok ? '1' : '0.55';
+        if (statusEl) {
+            statusEl.textContent = msg;
+            statusEl.style.color = colour;
+        }
+    }
+
+    function refresh() {
         const v = (otp.value || '').replace(/\D/g, '').slice(0, 6);
         otp.value = v;
-        const ok = v.length === 6;
-        lock.disabled    = !ok;
-        lock.style.opacity = ok ? '1' : '0.55';
-    };
+        if (v.length !== 6) {
+            lockFields(false, 'Score and identity fields unlock once the correct code is verified.', '#64748b');
+            return;
+        }
+        lockFields(false, 'Checking…', '#64748b');
+        clearTimeout(timer);
+        timer = setTimeout(async () => {
+            try {
+                const fd = new FormData();
+                fd.append('placement_id', placementId);
+                fd.append('purpose',      purpose);
+                fd.append('code',         v);
+                const r = await fetch(BASE_URL_EV + 'api/check_supervisor_otp.php', { method: 'POST', body: fd });
+                const j = await r.json();
+                if (j.ok) {
+                    lockFields(true, '✓ Code accepted — you can score below.', '#166534');
+                } else {
+                    lockFields(false, '✗ ' + (j.error || 'Invalid code.'), '#991b1b');
+                }
+            } catch (e) {
+                lockFields(false, '⚠ Could not verify (network).', '#991b1b');
+            }
+        }, 250);
+    }
     otp.addEventListener('input', refresh);
     refresh();
 });

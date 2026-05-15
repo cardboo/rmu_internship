@@ -515,14 +515,16 @@ if ($editing) {
                                 </button>
                             </form>
 
-                            <form method="POST" style="margin-top: 16px;" class="otp-gated-form">
+                            <form method="POST" style="margin-top: 16px;" class="otp-gated-form"
+                                  data-placement-id="<?php echo (int)$placement['id']; ?>"
+                                  data-purpose="logbook:<?php echo (int)$editing['id']; ?>">
                                 <div class="field">
                                     <label>6-digit code <span class="req">*</span></label>
                                     <input type="text" name="sup_otp" class="otp-input" inputmode="numeric"
                                            pattern="\d{6}" maxlength="6" required
                                            autocomplete="off"
                                            placeholder="000000">
-                                    <small class="muted small">Other fields unlock once the code is fully entered.</small>
+                                    <small class="otp-status muted small">Other fields unlock once the correct code is verified.</small>
                                 </div>
 
                                 <fieldset class="otp-locked" disabled style="border:none; padding:0; margin:0; opacity:0.55;">
@@ -658,20 +660,58 @@ if (weekSel) {
     weekSel.addEventListener('change', () => applyWeek(weekSel.value));
 }
 
-// OTP-gated fields: until the OTP input has 6 digits, the rest of the
-// supervisor sign-off form is disabled (item #4). Final verification
-// still happens server-side at submit.
+// OTP-gated fields: the rest of the supervisor sign-off form stays
+// disabled until the OTP entered actually matches a live (unconsumed,
+// unexpired) code on the server. Length-only checks are insufficient
+// — any 6 digits would unlock. We hit api/check_supervisor_otp.php
+// (peek-only, doesn't consume) and only flip the fieldset when the
+// server says ok.
+const BASE_URL_LB = <?php echo json_encode(BASE_URL); ?>;
 document.querySelectorAll('.otp-gated-form').forEach(form => {
-    const otp  = form.querySelector('.otp-input');
-    const lock = form.querySelector('.otp-locked');
-    if (!otp || !lock) return;
-    const refresh = () => {
+    const otp        = form.querySelector('.otp-input');
+    const lock       = form.querySelector('.otp-locked');
+    const statusEl   = form.querySelector('.otp-status');
+    const placementId = form.dataset.placementId;
+    const purpose     = form.dataset.purpose;
+    if (!otp || !lock || !placementId || !purpose) return;
+
+    let timer;
+    function lockFields(ok, msg, colour) {
+        lock.disabled       = !ok;
+        lock.style.opacity  = ok ? '1' : '0.55';
+        if (statusEl) {
+            statusEl.textContent = msg;
+            statusEl.style.color = colour;
+        }
+    }
+
+    function refresh() {
         const v = (otp.value || '').replace(/\D/g, '').slice(0, 6);
         otp.value = v;
-        const ok = v.length === 6;
-        lock.disabled    = !ok;
-        lock.style.opacity = ok ? '1' : '0.55';
-    };
+        if (v.length !== 6) {
+            lockFields(false, 'Other fields unlock once the correct code is verified.', '#64748b');
+            return;
+        }
+        lockFields(false, 'Checking…', '#64748b');
+        clearTimeout(timer);
+        timer = setTimeout(async () => {
+            try {
+                const fd = new FormData();
+                fd.append('placement_id', placementId);
+                fd.append('purpose',      purpose);
+                fd.append('code',         v);
+                const r = await fetch(BASE_URL_LB + 'api/check_supervisor_otp.php', { method: 'POST', body: fd });
+                const j = await r.json();
+                if (j.ok) {
+                    lockFields(true, '✓ Code accepted — you can fill in the form below.', '#166534');
+                } else {
+                    lockFields(false, '✗ ' + (j.error || 'Invalid code.'), '#991b1b');
+                }
+            } catch (e) {
+                lockFields(false, '⚠ Could not verify (network).', '#991b1b');
+            }
+        }, 250);
+    }
     otp.addEventListener('input', refresh);
     refresh();
 });

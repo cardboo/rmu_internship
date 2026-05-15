@@ -254,6 +254,39 @@ function verify_supervisor_otp(PDO $pdo, int $placement_id, string $purpose, str
 }
 
 /**
+ * Peek at an OTP — verify the supplied code matches WITHOUT consuming
+ * it. Used by the live "unlock the fieldset" check on the supervisor
+ * forms; the actual consume happens at submit time via
+ * verify_supervisor_otp().
+ *
+ * Returns false on bad code, missing OTP, expired, or missing table.
+ */
+function peek_supervisor_otp(PDO $pdo, int $placement_id, string $purpose, string $code): bool {
+    $code = trim($code);
+    if (!preg_match('/^\d{6}$/', $code)) return false;
+    try {
+        $stmt = $pdo->prepare("
+            SELECT code_hash
+            FROM supervisor_otps
+            WHERE placement_id = ?
+              AND purpose = ?
+              AND consumed_at IS NULL
+              AND expires_at > NOW()
+            ORDER BY id DESC LIMIT 1
+        ");
+        $stmt->execute([$placement_id, $purpose]);
+        $hash = $stmt->fetchColumn();
+        if (!$hash) return false;
+        return password_verify($code, $hash);
+    } catch (PDOException $e) {
+        if (str_contains($e->getMessage(), 'supervisor_otps')) {
+            return false;
+        }
+        throw $e;
+    }
+}
+
+/**
  * Given a date (Y-m-d), find which semester of the current
  * academic year it falls within. Returns the semester row or null.
  */

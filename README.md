@@ -174,18 +174,13 @@ Each action follows the same micro-flow:
            → fields unlock only on success
            → submit consumes the OTP via verify_supervisor_otp()
            → row is locked; neither student nor HOD can edit
-```
-
----
 
 ## 5. System flows — narrative for diagram derivation
-
 The flows below are written as numbered action sequences so they map
 directly to activity / sequence diagrams.
 
 ### 5.1 Student self-registration (activity diagram)
 
-```
 1.  Student opens /index.php → clicks "Create your account"
 2.  /register.php loads, email field is read-only
 3.  Student types index number → JS calls /api/registry_lookup.php?public=1
@@ -203,7 +198,7 @@ directly to activity / sequence diagrams.
 8.  Server creates users row, sets must_change_password = 0
 9.  Server updates student_registry: is_claimed=1, claimed_user_id
 10. Auto-logs the student in, redirects to /student/dashboard.php
-```
+
 
 ### 5.2 Letter request (activity diagram)
 
@@ -478,7 +473,6 @@ so the project works at `/` and at `/rmu_internship/` without configuration.
 | 014 backfill registry fields | Copy email / name / level / gender from users → registry where empty |
 | 015 supervisor OTPs | `supervisor_otps` table for the OTP flow |
 
----
 
 ## 10. Security posture
 

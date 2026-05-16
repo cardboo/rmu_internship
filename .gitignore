@@ -19,6 +19,7 @@ uploads/evidence/*
 
 # Local config overrides
 config.local.php
+includes/email_secrets.local.php
 .env
 .env.local
 

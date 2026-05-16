@@ -2,17 +2,29 @@
 /**
  * Email transport — PHPMailer-backed.
  *
- * PHPMailer files are expected at lib/PHPMailer/src/. See
- * lib/PHPMailer/README.md for the one-time install steps.
+ * SMTP credentials live in a gitignored local file so they never
+ * land in commit history. Copy
+ *     includes/email_secrets.local.example.php
+ *   → includes/email_secrets.local.php
+ * and fill in real values. Anything that file doesn't define()
+ * falls back to the safe defaults below.
+ *
+ * PHPMailer source is expected at lib/PHPMailer/.../src/ — see
+ * lib/PHPMailer/README.md and tools/install_phpmailer.bat.
  */
 
-const SMTP_HOST         = 'smtp.gmail.com';
-const SMTP_PORT         = 587;
-const SMTP_SECURE       = 'tls';                     // 'tls' (port 587) or 'ssl' (port 465)
-const SMTP_USER         = 'isabdulaisaiku@gmail.com';
-const SMTP_PASS         = 'twkurtspdegwanpu';        // Gmail app password
-const SMTP_FROM_ADDRESS = 'isabdulaisaiku@gmail.com';
-const SMTP_FROM_NAME    = 'RMU Internship Portal';
+$_secrets_file = __DIR__ . '/email_secrets.local.php';
+if (is_file($_secrets_file)) require_once $_secrets_file;
+
+// Defaults — point at Brevo on port 2525 (no AV mail-guard interception).
+// Override any of these in email_secrets.local.php.
+if (!defined('SMTP_HOST'))         define('SMTP_HOST',         'smtp-relay.brevo.com');
+if (!defined('SMTP_PORT'))         define('SMTP_PORT',         2525);
+if (!defined('SMTP_SECURE'))       define('SMTP_SECURE',       'tls');   // 'tls' or 'ssl'
+if (!defined('SMTP_USER'))         define('SMTP_USER',         '');
+if (!defined('SMTP_PASS'))         define('SMTP_PASS',         '');
+if (!defined('SMTP_FROM_ADDRESS')) define('SMTP_FROM_ADDRESS', 'noreply@rmu.edu.gh');
+if (!defined('SMTP_FROM_NAME'))    define('SMTP_FROM_NAME',    'RMU Internship Portal');
 
 // Auto-locate the PHPMailer src/ directory wherever it ended up
 // under lib/PHPMailer/. Tolerates both "lib/PHPMailer/src/" and
@@ -43,6 +55,13 @@ if (!function_exists('send_email')) {
             return [
                 'ok'         => false,
                 'error'      => 'PHPMailer is not installed. See lib/PHPMailer/README.md for the one-time install steps.',
+                'transcript' => null,
+            ];
+        }
+        if (SMTP_USER === '' || SMTP_PASS === '') {
+            return [
+                'ok'         => false,
+                'error'      => 'SMTP credentials are not configured. Create includes/email_secrets.local.php from the example file and fill in your relay user + key.',
                 'transcript' => null,
             ];
         }

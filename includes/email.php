@@ -82,6 +82,10 @@ if (!function_exists('send_email')) {
             $mail->isSMTP();
             $mail->Host       = SMTP_HOST;
             $mail->SMTPAuth   = true;
+            // Brevo's SMTP keys only validate against LOGIN/PLAIN. Without
+            // this, PHPMailer auto-negotiates CRAM-MD5 (also advertised by
+            // the server) and the server replies 535 5.7.8.
+            $mail->AuthType   = 'LOGIN';
             $mail->Username   = SMTP_USER;
             $mail->Password   = SMTP_PASS;
             $mail->SMTPSecure = (SMTP_SECURE === 'ssl')

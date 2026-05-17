@@ -116,7 +116,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_FILES['signature'])) {
                 </div>
 
                 <div style="margin-bottom: 20px;">
-                    <label style="display: block; margin-bottom: 8px; font-weight: 600; color: #475569;">Current Digital Signature</label>
+                    <label style="display: block; margin-bottom: 8px; font-weight: 600; color: #475569;">Current Signature Image</label>
                     <div style="border: 2px dashed #e2e8f0; padding: 20px; border-radius: 8px; text-align: center; background: #fcfcfc;">
                         <?php if ($user['signature_path']): ?>
                             <img src="<?php echo asset('images/signatures/' . $user['signature_path']); ?>" alt="Signature" style="max-height: 80px;">

@@ -139,7 +139,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['update_id'])) {
         <?php if (!$hasSignature): ?>
             <div class="sig-warning">
                 <i class="fas fa-exclamation-triangle"></i>
-                <span>You must <strong><a href="profile.php" style="color: #991b1b; text-decoration: underline;">upload your digital signature</a></strong> before you can approve any requests.</span>
+                <span>You must <strong><a href="profile.php" style="color: #991b1b; text-decoration: underline;">upload your an image of your signature</a></strong> before you can approve any requests.</span>
             </div>
         <?php endif; ?>
 

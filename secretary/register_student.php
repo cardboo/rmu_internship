@@ -9,17 +9,14 @@ $myDeptStmt->execute([$_SESSION['user_id']]);
 $myDept = $myDeptStmt->fetchColumn();
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['register'])) {
-    $idx      = strtoupper(trim($_POST['index_number'] ?? ''));
-    $email    = trim($_POST['email']    ?? '');
-    $password = (string)($_POST['password'] ?? '');
+    $idx   = strtoupper(trim($_POST['index_number'] ?? ''));
+    $email = trim($_POST['email'] ?? '');
 
     $err = null;
-    if ($idx === '' || $email === '' || $password === '') {
-        $err = 'Index number, email, and password are required.';
+    if ($idx === '' || $email === '') {
+        $err = 'Index number and email are required.';
     } elseif (($emailErr = rmu_email_error($email, 'student')) !== null) {
         $err = $emailErr;
-    } elseif (strlen($password) < 8) {
-        $err = 'Password must be at least 8 characters.';
     }
 
     // Re-fetch registry row server-side (don't trust the form).
@@ -55,7 +52,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['register'])) {
     if (!$err) {
         try {
             $pdo->beginTransaction();
-            $hash = password_hash($password, PASSWORD_DEFAULT);
+            // Insert with a random throwaway hash; reset_user_to_temp_password()
+            // overwrites it immediately and emails the actual temp password.
             $ins = $pdo->prepare("
                 INSERT INTO users
                     (full_name, email, password, role, department, program,
@@ -63,11 +61,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['register'])) {
                 VALUES (?, ?, ?, 'student', ?, ?, ?, ?, ?, 1)
             ");
             $ins->execute([
-                $reg['full_name'], $email, $hash,
+                $reg['full_name'], $email,
+                password_hash(bin2hex(random_bytes(16)), PASSWORD_DEFAULT),
                 $reg['dept_name'], $reg['program_name'],
                 $reg['level'], $reg['gender'], $idx,
             ]);
-            $new_id = $pdo->lastInsertId();
+            $new_id = (int)$pdo->lastInsertId();
 
             $pdo->prepare("
                 UPDATE student_registry
@@ -76,21 +75,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['register'])) {
             ")->execute([$new_id, $idx]);
 
             $pdo->commit();
-            $_SESSION['temp_pw_notice'] = [
-                'name'     => $reg['full_name'],
-                'password' => $password,
-                'email'    => $email,
-            ];
 
-            // Email the new student their temp password (best-effort).
-            require_once __DIR__ . '/../includes/email.php';
-            $body = "Hello " . htmlspecialchars($reg['full_name']) . ",\n\n"
-                  . "Your RMU Internship Portal account has been created by your department secretary.\n\n"
-                  . "  Email:    $email\n"
-                  . "  Password: $password  (temporary — you'll be asked to change it on first login)\n\n"
-                  . "Log in: " . BASE_URL . "index.php\n\n"
-                  . "— RMU Internship Portal";
-            try_send_email($pdo, $email, 'Your RMU Internship Portal account', $body, false);
+            $sent = reset_user_to_temp_password($pdo, $new_id);
+            audit_log($pdo, 'user.created', 'user', $new_id, [
+                'role' => 'student', 'index' => $idx, 'email' => $email,
+                'invitation_sent' => $sent['ok'],
+            ]);
+
+            $_SESSION['flash_msg'] = $sent['ok']
+                ? "Account created for {$reg['full_name']}. Login credentials emailed to $email."
+                : "Account created for {$reg['full_name']}, but the invitation email to $email failed to send. Ask admin to resend from the users page.";
+            $_SESSION['flash_type'] = $sent['ok'] ? 'success' : 'warning';
 
             header("Location: register_student.php?msg=created");
             exit;
@@ -103,12 +98,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['register'])) {
     $flash = ['type' => 'error', 'msg' => $err];
 }
 
-$default_pw      = generate_temp_password();
-$temp_pw_notice  = $_SESSION['temp_pw_notice'] ?? null;
-unset($_SESSION['temp_pw_notice']);
-
 if (($_GET['msg'] ?? '') === 'created') {
-    $flash = ['type' => 'success', 'msg' => 'Account created. Share the password below with the student.'];
+    $flash = [
+        'type' => $_SESSION['flash_type'] ?? 'success',
+        'msg'  => $_SESSION['flash_msg']  ?? 'Account created.',
+    ];
+    unset($_SESSION['flash_msg'], $_SESSION['flash_type']);
 }
 ?>
 <!DOCTYPE html>
@@ -139,16 +134,6 @@ if (($_GET['msg'] ?? '') === 'created') {
         </div>
     <?php endif; ?>
 
-    <?php if ($temp_pw_notice): ?>
-        <div class="banner banner-warning temp-pw-banner">
-            <i class="fas fa-key"></i>
-            <strong><?php echo htmlspecialchars($temp_pw_notice['name']); ?></strong>
-            (<?php echo htmlspecialchars($temp_pw_notice['email']); ?>) —
-            temporary password: <code><?php echo htmlspecialchars($temp_pw_notice['password']); ?></code>.
-            They will be forced to change it on first login.
-        </div>
-    <?php endif; ?>
-
     <div class="card">
         <h3><i class="fas fa-search"></i>&nbsp; Step 1 — Look up the student</h3>
         <p class="muted">Enter the student's index number. We'll fetch their record from the registry.</p>
@@ -175,29 +160,19 @@ if (($_GET['msg'] ?? '') === 'created') {
             <input type="hidden" name="register" value="1">
             <input type="hidden" name="index_number" id="form_index_number">
 
-            <div class="grid-2">
-                <div class="field">
-                    <label>Email <span class="req">*</span></label>
-                    <input type="email" name="email" id="form_email" required
-                           placeholder="e.g. j.doe@<?php echo RMU_STUDENT_DOMAIN; ?>">
-                    <small class="muted small">Must end in <code>@<?php echo RMU_STUDENT_DOMAIN; ?></code>. Pre-filled if the registry has one on file.</small>
-                </div>
-                <div class="field">
-                    <label>Temporary Password <span class="req">*</span></label>
-                    <div class="pw-row">
-                        <input type="text" name="password" id="pw_input" required minlength="8"
-                               value="<?php echo htmlspecialchars($default_pw); ?>">
-                        <button type="button" id="regen_btn" class="btn btn-ghost btn-sm" title="Generate new">
-                            <i class="fas fa-sync-alt"></i>
-                        </button>
-                    </div>
-                    <small class="muted small">Save this — student must change it on first login.</small>
-                </div>
+            <div class="field">
+                <label>Email <span class="req">*</span></label>
+                <input type="email" name="email" id="form_email" required
+                       placeholder="e.g. j.doe@<?php echo RMU_STUDENT_DOMAIN; ?>">
+                <small class="muted small">
+                    Must end in <code>@<?php echo RMU_STUDENT_DOMAIN; ?></code>. Pre-filled if the registry has one on file.
+                    A temporary password is generated automatically and emailed to the student.
+                </small>
             </div>
 
             <div class="form-actions">
                 <button type="submit" class="btn btn-primary">
-                    <i class="fas fa-check-circle"></i>&nbsp; Create Account
+                    <i class="fas fa-paper-plane"></i>&nbsp; Create Account &amp; Send Invitation
                 </button>
             </div>
         </form>
@@ -271,18 +246,6 @@ lookupIdx.addEventListener('keydown', e => {
     if (e.key === 'Enter') { e.preventDefault(); doLookup(); }
 });
 
-document.getElementById('regen_btn').addEventListener('click', () => {
-    const alpha  = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz';
-    const digits = '23456789';
-    let out = '';
-    for (let i = 0; i < 10; i++) {
-        out += (i % 5 < 3)
-            ? alpha[Math.floor(Math.random() * alpha.length)]
-            : digits[Math.floor(Math.random() * digits.length)];
-    }
-    document.getElementById('pw_input').value =
-        out.split('').sort(() => Math.random() - 0.5).join('');
-});
 </script>
 </body>
 </html>

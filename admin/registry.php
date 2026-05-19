@@ -99,6 +99,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['add_single'])) {
                 $dob !== ''    ? $dob    : null,
                 $yr !== ''     ? $yr     : null,
             ]);
+            audit_log($pdo, 'registry.added', 'registry', $idx, ['name' => $name, 'dept_id' => $dept_id, 'prog_id' => $prog_id]);
             $flash = ['type' => 'success', 'msg' => "Student $idx added to registry."];
         } catch (PDOException $e) {
             if ($e->getCode() === '23000') {
@@ -221,6 +222,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['upload_csv'])) {
                         }
                         fclose($handle);
                         $summary = ['added' => $added, 'skipped' => $skipped, 'errors' => $errors];
+                        audit_log($pdo, 'registry.csv_imported', 'registry', null, $summary);
                         $flash = [
                             'type' => $errors === 0 ? 'success' : 'warning',
                             'msg'  => "Import complete: $added added, $skipped skipped (duplicates), $errors errors."

@@ -54,6 +54,21 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['update_user'])) {
             'gender' => $gender, 'job_title' => $job_title, 'index_number' => $index_number,
         ]);
     } else {
+        // Capture the diff (changed fields only) for the audit log so
+        // we can answer "who changed Y's email on date X" later without
+        // logging every silent re-save.
+        $changes = [];
+        $checks = [
+            'full_name' => $full_name, 'email' => $email, 'role' => $role,
+            'department' => $department, 'program' => $program, 'level' => $level,
+            'job_title' => $job_title, 'gender' => $gender, 'index_number' => $index_number,
+        ];
+        foreach ($checks as $k => $v) {
+            $old = (string)($target[$k] ?? '');
+            $new = (string)$v;
+            if ($old !== $new) $changes[$k] = ['from' => $old, 'to' => $new];
+        }
+
         $upd = $pdo->prepare("
             UPDATE users
             SET full_name = ?, email = ?, role = ?, department = ?,
@@ -69,6 +84,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['update_user'])) {
             $role === 'student' && $index_number !== '' ? $index_number : null,
             $user_id,
         ]);
+
+        if (!empty($changes)) {
+            audit_log($pdo, 'user.updated', 'user', $user_id, ['changes' => $changes]);
+        }
 
         // ----------------------------------------------------------------
         // Mirror the student edit into student_registry (matches the

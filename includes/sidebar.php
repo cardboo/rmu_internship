@@ -90,6 +90,9 @@ if (!function_exists('nav_active')) {
             <a href="<?php echo url('admin/reports.php'); ?>" class="<?php echo nav_active('admin/reports.php', $current_path); ?>">
                 <i class="fas fa-chart-line"></i>&nbsp;&nbsp;Reports
             </a>
+            <a href="<?php echo url('admin/audit.php'); ?>" class="<?php echo nav_active('admin/audit.php', $current_path); ?>">
+                <i class="fas fa-shield-alt"></i>&nbsp;&nbsp;Audit Log
+            </a>
         <?php endif; ?>
 
         <?php if ($role === 'secretary'): ?>

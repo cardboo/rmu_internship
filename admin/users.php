@@ -11,6 +11,7 @@ if (isset($_GET['archive_id'])) {
     $id = (int)$_GET['archive_id'];
     if ($id !== (int)$_SESSION['user_id']) {
         $pdo->prepare("UPDATE users SET is_archived = 1, archived_at = NOW() WHERE id = ?")->execute([$id]);
+        audit_log($pdo, 'user.archived', 'user', $id);
         header("Location: users.php?msg=archived");
     } else {
         header("Location: users.php?msg=error_self");
@@ -22,7 +23,24 @@ if (isset($_GET['archive_id'])) {
 if (isset($_GET['restore_id'])) {
     $id = (int)$_GET['restore_id'];
     $pdo->prepare("UPDATE users SET is_archived = 0, archived_at = NULL WHERE id = ?")->execute([$id]);
+    audit_log($pdo, 'user.restored', 'user', $id);
     header("Location: users.php?msg=restored&archived=1");
+    exit;
+}
+
+// Resend invitation — regenerates the temp password and re-emails it.
+// The password is never shown to the admin.
+if (isset($_GET['resend_id'])) {
+    $id = (int)$_GET['resend_id'];
+    if ($id === (int)$_SESSION['user_id']) {
+        header("Location: users.php?msg=error_self_resend");
+        exit;
+    }
+    $r = reset_user_to_temp_password($pdo, $id);
+    audit_log($pdo, 'user.invitation_resent', 'user', $id, [
+        'email' => $r['email'], 'delivered' => $r['ok'],
+    ]);
+    header("Location: users.php?msg=" . ($r['ok'] ? 'resent' : 'resend_failed') . "&to=" . urlencode($r['email']));
     exit;
 }
 
@@ -68,17 +86,25 @@ $counts = $pdo->query("
 // Departments for dropdown
 $departments = $pdo->query("SELECT DISTINCT department FROM users WHERE department IS NOT NULL AND department <> '' ORDER BY department")->fetchAll(PDO::FETCH_COLUMN);
 
+$to_addr = $_GET['to'] ?? '';
 $msg_map = [
-    'archived'   => ['success', 'User archived. They can no longer log in until restored.'],
-    'restored'   => ['success', 'User restored.'],
-    'error_self' => ['error',   'You cannot archive your own account.'],
-    'created'    => ['success', 'New user created. Temporary password shown — share it with them.'],
-    'updated'    => ['success', 'User updated.'],
+    'archived'           => ['success', 'User archived. They can no longer log in until restored.'],
+    'restored'           => ['success', 'User restored.'],
+    'error_self'         => ['error',   'You cannot archive your own account.'],
+    'error_self_resend'  => ['error',   'You cannot resend an invitation to yourself.'],
+    'updated'            => ['success', 'User updated.'],
+    'resent'             => ['success', 'A new temporary password was emailed to ' . htmlspecialchars($to_addr) . '.'],
+    'resend_failed'      => ['error',   'Password was regenerated but the email to ' . htmlspecialchars($to_addr) . ' failed to send. Check SMTP settings.'],
 ];
 $flash = $msg_map[$_GET['msg'] ?? ''] ?? null;
-$temp_pw_notice = $_SESSION['temp_pw_notice'] ?? null;
+
+// Drop the legacy temp_pw_notice if any old session still has it lying
+// around — we no longer display temp passwords on screen.
 unset($_SESSION['temp_pw_notice']);
-$flash_warning  = $_SESSION['flash_warning'] ?? null;
+
+$flash_success = $_SESSION['flash_success'] ?? null;
+unset($_SESSION['flash_success']);
+$flash_warning = $_SESSION['flash_warning'] ?? null;
 unset($_SESSION['flash_warning']);
 ?>
 <!DOCTYPE html>
@@ -108,16 +134,13 @@ unset($_SESSION['flash_warning']);
 
     <?php if ($flash): ?>
         <div class="banner banner-<?php echo $flash[0]; ?>">
-            <i class="fas fa-info-circle"></i> <?php echo htmlspecialchars($flash[1]); ?>
+            <i class="fas fa-info-circle"></i> <?php echo $flash[1]; ?>
         </div>
     <?php endif; ?>
 
-    <?php if ($temp_pw_notice): ?>
-        <div class="banner banner-warning temp-pw-banner">
-            <i class="fas fa-key"></i>
-            <strong>Temporary password for <?php echo htmlspecialchars($temp_pw_notice['name']); ?>:</strong>
-            <code><?php echo htmlspecialchars($temp_pw_notice['password']); ?></code>
-            &nbsp;Share this with the user — they will be forced to change it on first login.
+    <?php if ($flash_success): ?>
+        <div class="banner banner-success">
+            <i class="fas fa-check-circle"></i> <?php echo htmlspecialchars($flash_success); ?>
         </div>
     <?php endif; ?>
 
@@ -202,6 +225,14 @@ unset($_SESSION['flash_warning']);
                             <a href="edit_user.php?id=<?php echo $u['id']; ?>" class="btn btn-ghost btn-sm" title="Edit">
                                 <i class="fas fa-edit"></i>
                             </a>
+                            <?php if (empty($u['is_archived']) && $u['id'] !== (int)$_SESSION['user_id']): ?>
+                                <a href="users.php?resend_id=<?php echo $u['id']; ?>"
+                                   class="btn btn-ghost btn-sm"
+                                   onclick="return confirm('Generate a new temporary password for <?php echo htmlspecialchars(addslashes($u['full_name'] ?? '')); ?> and email it to <?php echo htmlspecialchars(addslashes($u['email'] ?? '')); ?>?');"
+                                   title="Resend invitation (regenerates the temp password and re-emails it)">
+                                    <i class="fas fa-paper-plane"></i>
+                                </a>
+                            <?php endif; ?>
                             <?php if (!empty($u['is_archived'])): ?>
                                 <a href="users.php?restore_id=<?php echo $u['id']; ?>" class="btn btn-ghost btn-sm" title="Restore">
                                     <i class="fas fa-undo"></i>

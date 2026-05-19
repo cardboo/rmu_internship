@@ -302,6 +302,76 @@ function semester_for_date(PDO $pdo, string $date): ?array {
 }
 
 /**
+ * Append a row to audit_log. Safe no-op when migration 016 hasn't
+ * been applied yet, so existing pages don't break on a stale DB.
+ *
+ *   audit_log($pdo, 'user.created', 'user', $new_id, ['email'=>$e, 'role'=>$r])
+ *
+ * Sensitive values (passwords, OTP codes) must never be passed in
+ * $payload — the table is queryable from the admin audit page.
+ */
+function audit_log(PDO $pdo, string $action, ?string $target_type = null, $target_id = null, ?array $payload = null): void {
+    try {
+        $pdo->prepare("
+            INSERT INTO audit_log
+                (actor_user_id, actor_role, action, target_type, target_id, payload_json, ip, ua)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        ")->execute([
+            $_SESSION['user_id'] ?? null,
+            $_SESSION['role']    ?? null,
+            $action,
+            $target_type,
+            $target_id !== null ? (string)$target_id : null,
+            $payload !== null ? json_encode($payload, JSON_UNESCAPED_SLASHES) : null,
+            $_SERVER['REMOTE_ADDR'] ?? null,
+            substr($_SERVER['HTTP_USER_AGENT'] ?? '', 0, 255),
+        ]);
+    } catch (PDOException $e) {
+        // Table doesn't exist yet — swallow so callers don't blow up
+        // on a partially-migrated DB. Any other failure re-throws.
+        if (!str_contains($e->getMessage(), 'audit_log')) throw $e;
+    }
+}
+
+/**
+ * Generate a fresh temp password for $user_id, write the bcrypt hash,
+ * flag must_change_password=1, and email the plaintext to the user.
+ *
+ * Used both at account-creation time (so the temp password is never
+ * shown to the admin who created the user) and from the "Resend
+ * Invitation" action on admin/users.php.
+ *
+ * Returns ['ok' => bool, 'email' => string].
+ */
+function reset_user_to_temp_password(PDO $pdo, int $user_id): array {
+    $stmt = $pdo->prepare("SELECT email, full_name FROM users WHERE id = ?");
+    $stmt->execute([$user_id]);
+    $u = $stmt->fetch(PDO::FETCH_ASSOC);
+    if (!$u) return ['ok' => false, 'email' => ''];
+
+    $temp = generate_temp_password();
+    $hash = password_hash($temp, PASSWORD_DEFAULT);
+
+    $pdo->prepare("
+        UPDATE users
+        SET password = ?, must_change_password = 1
+        WHERE id = ?
+    ")->execute([$hash, $user_id]);
+
+    require_once __DIR__ . '/email.php';
+    $body = "Hello {$u['full_name']},\n\n"
+          . "Login credentials for your RMU Internship Portal account:\n\n"
+          . "  Email:    {$u['email']}\n"
+          . "  Password: $temp\n\n"
+          . "This password is temporary — you will be asked to change it the first time you log in.\n\n"
+          . "Log in: " . BASE_URL . "index.php\n\n"
+          . "If you didn't expect this email, contact your department.\n\n"
+          . "— RMU Internship Portal";
+    $ok = try_send_email($pdo, $u['email'], 'Your RMU Internship Portal credentials', $body, false);
+    return ['ok' => $ok, 'email' => $u['email']];
+}
+
+/**
  * If the current user is flagged must_change_password=1, force-redirect
  * them to change_password.php until they comply. Pages that need to
  * bypass this (the change_password page itself, logout) can declare

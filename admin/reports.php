@@ -100,6 +100,114 @@ $PIPELINE_LABELS = [
     'completed' => 'Completed (evaluated)',
     'rejected'  => 'Rejected',
 ];
+
+// ---------------------------------------------------------------------
+// CSV export — preserves the same filters as the on-screen table.
+// ---------------------------------------------------------------------
+if (isset($_GET['export']) && $_GET['export'] === 'csv') {
+    audit_log($pdo, 'reports.exported', 'report', 'admin_pipeline', [
+        'year' => $year_filter, 'dept' => $dept_filter, 'stage' => $status_filter,
+        'rows' => count($rows),
+    ]);
+    $filename = 'rmu_internship_report_' . date('Ymd_His') . '.csv';
+    header('Content-Type: text/csv; charset=utf-8');
+    header("Content-Disposition: attachment; filename=$filename");
+    $out = fopen('php://output', 'w');
+    fputcsv($out, ['Index No.', 'Full Name', 'Department', 'Programme', 'Pipeline Stage',
+                   'Company', 'Placement Start', 'Placement End',
+                   'Logbooks Submitted', 'Evaluation Score (out of 50)']);
+    foreach ($rows as $r) {
+        fputcsv($out, [
+            $r['index_number'] ?? '',
+            $r['full_name'],
+            $r['department'] ?? '',
+            $r['program'] ?? '',
+            $PIPELINE_LABELS[$r['_stage']] ?? $r['_stage'],
+            $r['company_name'] ?? '',
+            $r['placement_start'] ?? '',
+            $r['placement_end'] ?? '',
+            (int)$r['submitted_count'],
+            $r['total_score'] !== null ? (int)$r['total_score'] : '',
+        ]);
+    }
+    fclose($out);
+    exit;
+}
+
+// ---------------------------------------------------------------------
+// Chart 1: pipeline stages × department (stacked bar). Uses the SAME
+// filtered $rows so the chart reflects whatever filter the user applied.
+// ---------------------------------------------------------------------
+$STAGES_ORDER = ['none','requested','approved','placed','logging','completed','rejected'];
+$STAGE_COLORS = [
+    'none'      => '#94a3b8',
+    'requested' => '#f59e0b',
+    'approved'  => '#3b82f6',
+    'placed'    => '#6366f1',
+    'logging'   => '#0ea5e9',
+    'completed' => '#10b981',
+    'rejected'  => '#ef4444',
+];
+
+$dept_stage_counts = [];
+foreach ($rows as $r) {
+    $d = $r['department'] ?: '(unspecified)';
+    $dept_stage_counts[$d] = $dept_stage_counts[$d] ?? array_fill_keys($STAGES_ORDER, 0);
+    $dept_stage_counts[$d][$r['_stage']]++;
+}
+ksort($dept_stage_counts);
+$chart1_labels   = array_keys($dept_stage_counts);
+$chart1_datasets = [];
+foreach ($STAGES_ORDER as $stage) {
+    $chart1_datasets[] = [
+        'label' => $PIPELINE_LABELS[$stage],
+        'data'  => array_map(fn($d) => $dept_stage_counts[$d][$stage], $chart1_labels),
+        'backgroundColor' => $STAGE_COLORS[$stage],
+    ];
+}
+
+// ---------------------------------------------------------------------
+// Chart 2: distribution of evaluation scores (histogram, bins of 5/50).
+// Aggregated across all evaluations matching the year filter (the
+// per-row $rows array is already year-scoped via the LEFT JOIN on p2).
+// ---------------------------------------------------------------------
+$bins         = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0]; // 0-4, 5-9, ..., 45-50
+$bin_labels   = ['0-4','5-9','10-14','15-19','20-24','25-29','30-34','35-39','40-44','45-50'];
+foreach ($rows as $r) {
+    if (!empty($r['total_score'])) {
+        $idx = min(9, (int)floor($r['total_score'] / 5));
+        $bins[$idx]++;
+    }
+}
+
+// ---------------------------------------------------------------------
+// Chart 3: weekly submitted-logbooks trend (last 12 ISO weeks).
+// ---------------------------------------------------------------------
+$trend_stmt = $pdo->prepare("
+    SELECT DATE_FORMAT(week_start, '%x-W%v') AS iso_week,
+           COUNT(*) AS n
+    FROM logbooks
+    WHERE is_submitted = 1
+      AND week_start >= DATE_SUB(CURDATE(), INTERVAL 12 WEEK)
+    GROUP BY iso_week
+    ORDER BY iso_week
+");
+$trend_stmt->execute();
+$trend_rows = $trend_stmt->fetchAll(PDO::FETCH_ASSOC);
+$trend_map  = [];
+foreach ($trend_rows as $tr) $trend_map[$tr['iso_week']] = (int)$tr['n'];
+
+// Render last 12 weeks even if some had zero submissions, so the X-axis
+// doesn't have gaps.
+$today = new DateTime('today');
+$trend_labels = [];
+$trend_values = [];
+for ($i = 11; $i >= 0; $i--) {
+    $d = (clone $today)->modify("-$i weeks");
+    $k = $d->format('o-\WW');
+    $trend_labels[] = $d->format('\WW (M-d)');
+    $trend_values[] = $trend_map[$k] ?? 0;
+}
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -113,6 +221,39 @@ $PIPELINE_LABELS = [
     <link rel="stylesheet" href="<?php echo asset('css/users.css'); ?>">
     <link rel="stylesheet" href="<?php echo asset('css/dashboards.css'); ?>">
     <link rel="stylesheet" href="<?php echo asset('css/reports.css'); ?>">
+    <style>
+        .chart-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 18px;
+            margin: 22px 0;
+        }
+        .chart-card {
+            background: #fff;
+            border: 1px solid #e5e7eb;
+            border-radius: 10px;
+            padding: 14px 18px 18px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.04);
+        }
+        .chart-card.wide { grid-column: 1 / -1; }
+        .chart-card h3 {
+            margin: 0 0 10px;
+            font-size: 0.95rem;
+            color: #374151;
+            font-weight: 600;
+        }
+        .chart-card .chart-meta {
+            font-size: 0.78rem;
+            color: #6b7280;
+            margin-bottom: 8px;
+        }
+        .chart-canvas-wrap { position: relative; height: 280px; }
+        @media (max-width: 900px) { .chart-grid { grid-template-columns: 1fr; } }
+        @media print {
+            .chart-grid { grid-template-columns: 1fr 1fr; }
+            .chart-card { break-inside: avoid; }
+        }
+    </style>
 </head>
 <body>
 <?php include __DIR__ . '/../includes/sidebar.php'; ?>
@@ -122,9 +263,12 @@ $PIPELINE_LABELS = [
     <div class="header-panel">
         <div>
             <h1>System-wide Internship Report</h1>
-            <p>Pipeline view of every active student across all departments. Filter, then Print to take a paper copy.</p>
+            <p>Pipeline view of every active student across all departments. Filter, then Print or Export to CSV.</p>
         </div>
         <div class="modal-print-hide" style="display:flex; gap:8px;">
+            <a href="?<?php echo http_build_query(array_merge($_GET, ['export' => 'csv'])); ?>" class="btn btn-ghost btn-sm">
+                <i class="fas fa-file-csv"></i>&nbsp; Export CSV
+            </a>
             <button onclick="window.print()" class="btn btn-primary btn-sm">
                 <i class="fas fa-print"></i>&nbsp; Print
             </button>
@@ -168,6 +312,24 @@ $PIPELINE_LABELS = [
         <div class="kpi-card"><div class="kpi-label">Logging weekly</div><div class="kpi-value"><?php echo $kpi['logging']; ?></div></div>
         <div class="kpi-card ok"><div class="kpi-label">Completed</div><div class="kpi-value"><?php echo $kpi['completed']; ?></div></div>
         <div class="kpi-card err"><div class="kpi-label">Rejected</div><div class="kpi-value"><?php echo $kpi['rejected']; ?></div></div>
+    </div>
+
+    <div class="chart-grid">
+        <div class="chart-card wide">
+            <h3><i class="fas fa-chart-bar"></i>&nbsp; Pipeline stages by department</h3>
+            <p class="chart-meta">Filtered set: <?php echo (int)$kpi['total']; ?> students. Stacked by stage.</p>
+            <div class="chart-canvas-wrap"><canvas id="chartStages"></canvas></div>
+        </div>
+        <div class="chart-card">
+            <h3><i class="fas fa-chart-area"></i>&nbsp; Evaluation score distribution</h3>
+            <p class="chart-meta">Buckets of 5 points (max 50). Only completed evaluations counted.</p>
+            <div class="chart-canvas-wrap"><canvas id="chartScores"></canvas></div>
+        </div>
+        <div class="chart-card">
+            <h3><i class="fas fa-chart-line"></i>&nbsp; Weekly logbooks submitted (last 12 weeks)</h3>
+            <p class="chart-meta">System-wide count of submitted weekly logs per ISO week.</p>
+            <div class="chart-canvas-wrap"><canvas id="chartTrend"></canvas></div>
+        </div>
     </div>
 
     <div class="card" style="padding: 0;">
@@ -217,5 +379,70 @@ $PIPELINE_LABELS = [
         </table>
     </div>
 </div>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<script>
+const CHART1_LABELS   = <?php echo json_encode($chart1_labels, JSON_UNESCAPED_UNICODE); ?>;
+const CHART1_DATASETS = <?php echo json_encode($chart1_datasets, JSON_UNESCAPED_UNICODE); ?>;
+const CHART2_LABELS   = <?php echo json_encode($bin_labels); ?>;
+const CHART2_BINS     = <?php echo json_encode($bins); ?>;
+const CHART3_LABELS   = <?php echo json_encode($trend_labels); ?>;
+const CHART3_VALUES   = <?php echo json_encode($trend_values); ?>;
+
+function makeStackedBar() {
+    new Chart(document.getElementById('chartStages'), {
+        type: 'bar',
+        data: { labels: CHART1_LABELS, datasets: CHART1_DATASETS },
+        options: {
+            responsive: true, maintainAspectRatio: false,
+            scales: { x: { stacked: true }, y: { stacked: true, beginAtZero: true, ticks: { precision: 0 } } },
+            plugins: { legend: { position: 'bottom' } },
+        },
+    });
+}
+function makeScoreHistogram() {
+    new Chart(document.getElementById('chartScores'), {
+        type: 'bar',
+        data: {
+            labels: CHART2_LABELS,
+            datasets: [{
+                label: 'Students',
+                data: CHART2_BINS,
+                backgroundColor: '#10b981',
+                borderRadius: 4,
+            }],
+        },
+        options: {
+            responsive: true, maintainAspectRatio: false,
+            scales: { y: { beginAtZero: true, ticks: { precision: 0 } } },
+            plugins: { legend: { display: false } },
+        },
+    });
+}
+function makeTrendLine() {
+    new Chart(document.getElementById('chartTrend'), {
+        type: 'line',
+        data: {
+            labels: CHART3_LABELS,
+            datasets: [{
+                label: 'Submitted logs',
+                data: CHART3_VALUES,
+                borderColor: '#3b82f6',
+                backgroundColor: 'rgba(59,130,246,0.18)',
+                fill: true, tension: 0.3, pointRadius: 3,
+            }],
+        },
+        options: {
+            responsive: true, maintainAspectRatio: false,
+            scales: { y: { beginAtZero: true, ticks: { precision: 0 } } },
+            plugins: { legend: { display: false } },
+        },
+    });
+}
+
+if (CHART1_LABELS.length > 0) makeStackedBar();
+makeScoreHistogram();
+makeTrendLine();
+</script>
 </body>
 </html>

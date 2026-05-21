@@ -184,11 +184,11 @@ foreach ($rows as $r) {
 // Chart 3: weekly submitted-logbooks trend (last 12 ISO weeks).
 // ---------------------------------------------------------------------
 $trend_stmt = $pdo->prepare("
-    SELECT DATE_FORMAT(week_start, '%x-W%v') AS iso_week,
+    SELECT DATE_FORMAT(start_date, '%x-W%v') AS iso_week,
            COUNT(*) AS n
     FROM logbooks
     WHERE is_submitted = 1
-      AND week_start >= DATE_SUB(CURDATE(), INTERVAL 12 WEEK)
+      AND start_date >= DATE_SUB(CURDATE(), INTERVAL 12 WEEK)
     GROUP BY iso_week
     ORDER BY iso_week
 ");

@@ -137,7 +137,7 @@ $stmt = $pdo->prepare("
         u.department      AS student_dept,
         hod.email         AS hod_email,
         hod.full_name     AS hod_name,
-        (SELECT MAX(week_end) FROM logbooks l
+        (SELECT MAX(end_date) FROM logbooks l
           WHERE l.placement_id = p.id AND l.is_submitted = 1) AS last_week_end
     FROM placements p
     JOIN users u  ON u.id = p.student_id AND COALESCE(u.is_archived,0) = 0

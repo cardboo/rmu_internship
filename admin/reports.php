@@ -9,6 +9,11 @@ $year_filter   = isset($_GET['year']) ? (int)$_GET['year']   : 0;
 $dept_filter   = trim($_GET['dept']   ?? '');
 $status_filter = trim($_GET['status'] ?? '');
 $q             = trim($_GET['q']      ?? '');
+$from_date     = trim($_GET['from']   ?? '');
+$to_date       = trim($_GET['to']     ?? '');
+// Validate ISO dates; ignore malformed values rather than erroring.
+$from_ok = preg_match('/^\d{4}-\d{2}-\d{2}$/', $from_date) ? $from_date : '';
+$to_ok   = preg_match('/^\d{4}-\d{2}-\d{2}$/', $to_date)   ? $to_date   : '';
 
 $years = $pdo->query("SELECT id, name, is_current FROM academic_years ORDER BY start_date DESC")->fetchAll(PDO::FETCH_ASSOC);
 // Default = current academic year if no explicit filter.
@@ -82,6 +87,18 @@ unset($r);
 
 if ($status_filter !== '') {
     $rows = array_values(array_filter($rows, fn($r) => $r['_stage'] === $status_filter));
+}
+
+// Date-range filter: keep students whose placement period overlaps
+// [from, to]. When a date filter is active, students without a
+// placement are excluded (the range is about active internships).
+if ($from_ok !== '' || $to_ok !== '') {
+    $rows = array_values(array_filter($rows, function ($r) use ($from_ok, $to_ok) {
+        if (empty($r['placement_start']) || empty($r['placement_end'])) return false;
+        if ($from_ok !== '' && $r['placement_end']   < $from_ok) return false;
+        if ($to_ok   !== '' && $r['placement_start'] > $to_ok)   return false;
+        return true;
+    }));
 }
 
 // KPIs
@@ -300,6 +317,14 @@ for ($i = 11; $i >= 0; $i--) {
             <?php endforeach; ?>
         </select>
         <input type="text" name="q" value="<?php echo htmlspecialchars($q); ?>" placeholder="Search by name or index #" class="filter-input">
+        <label class="filter-input" style="display:flex;align-items:center;gap:6px;">
+            <span class="muted small">From</span>
+            <input type="date" name="from" value="<?php echo htmlspecialchars($from_ok); ?>" style="border:none;outline:none;">
+        </label>
+        <label class="filter-input" style="display:flex;align-items:center;gap:6px;">
+            <span class="muted small">To</span>
+            <input type="date" name="to" value="<?php echo htmlspecialchars($to_ok); ?>" style="border:none;outline:none;">
+        </label>
         <button type="submit" class="btn btn-primary"><i class="fas fa-filter"></i>&nbsp; Apply</button>
         <a href="reports.php" class="btn btn-ghost">Clear</a>
     </form>

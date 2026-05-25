@@ -24,6 +24,45 @@ if ($placement) {
     $evaluation = $evStmt->fetch(PDO::FETCH_ASSOC) ?: null;
 }
 
+// ----------------------------------------------------------------------
+// Gate: the supervisor must have signed off every SUBMITTED weekly log
+// before the final evaluation can be taken (supervisor recommendation
+// #3). We block when there are submitted-but-unsigned weeks, and also
+// require at least one signed week so the evaluation can't be done with
+// no weekly review at all.
+// ----------------------------------------------------------------------
+$unsigned_weeks = [];
+$signed_count   = 0;
+if ($placement && !$evaluation) {
+    $logChk = $pdo->prepare("
+        SELECT week_number, is_submitted, supervisor_signed_at
+        FROM logbooks
+        WHERE placement_id = ?
+        ORDER BY week_number
+    ");
+    $logChk->execute([(int)$placement['id']]);
+    foreach ($logChk->fetchAll(PDO::FETCH_ASSOC) as $lg) {
+        if (!empty($lg['supervisor_signed_at'])) {
+            $signed_count++;
+        } elseif ((int)$lg['is_submitted'] === 1) {
+            $unsigned_weeks[] = (int)$lg['week_number'];
+        }
+    }
+}
+// Evaluation is allowed only when no submitted week is awaiting a
+// signature AND at least one week has been signed.
+$eval_gated   = $placement && !$evaluation && (!empty($unsigned_weeks) || $signed_count === 0);
+$gate_reason  = '';
+if ($eval_gated) {
+    if (!empty($unsigned_weeks)) {
+        $gate_reason = 'Your supervisor still needs to sign off Week '
+            . implode(', ', $unsigned_weeks)
+            . ' on the weekly logbook before the final evaluation can be taken.';
+    } else {
+        $gate_reason = 'Your supervisor must review and sign off at least one weekly logbook entry before the final evaluation can be taken.';
+    }
+}
+
 // The eight criteria, mirroring the official RMU PDF.
 $CRITERIA = [
     ['key' => 'responsibility',  'label' => 'Acceptance of responsibility',          'desc' => 'Seeks and accepts responsibility at all times', 'max' => 5],
@@ -41,7 +80,7 @@ $flash = ['type' => '', 'msg' => ''];
 // ----------------------------------------------------------------------
 // POST: request OTP for the evaluation
 // ----------------------------------------------------------------------
-if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['sup_otp_request']) && $placement && !$evaluation) {
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['sup_otp_request']) && $placement && !$evaluation && !$eval_gated) {
     $code = issue_supervisor_otp($pdo, (int)$placement['id'], $placement['supervisor_email'], 'evaluation', 15);
     if ($code === null) {
         header("Location: evaluation.php?otp_err=migration");
@@ -69,7 +108,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['submit_eval']) && $pl
     $sup_ttl  = trim($_POST['supervisor_title'] ?? '');
 
     $err = null;
-    if ($sup_name === '' || $org === '') {
+    if ($eval_gated) {
+        $err = $gate_reason;
+    } elseif ($sup_name === '' || $org === '') {
         $err = 'Training officer name and organisation are required.';
     } elseif (!preg_match('/^\d{6}$/', $code)) {
         $err = 'Enter the 6-digit OTP that was sent to the supervisor\'s email.';
@@ -219,6 +260,24 @@ if (($_GET['otp_err']   ?? '') === 'migration') $flash = ['type' => 'error', 'ms
             <p class="muted small" style="margin-top: 16px;">
                 <i class="fas fa-lock"></i>&nbsp;
                 Locked. Neither you nor the HOD can edit this. If there's an error, contact the secretary.
+            </p>
+        </div>
+
+    <?php elseif ($eval_gated): ?>
+        <!-- Blocked until all submitted weeks are signed off -->
+        <div class="card">
+            <div class="banner banner-warning" style="margin:0;">
+                <i class="fas fa-clipboard-check"></i>
+                <?php echo htmlspecialchars($gate_reason); ?>
+            </div>
+            <p class="muted" style="margin-top:14px;">
+                The final evaluation can only be completed after your supervisor has reviewed and signed
+                your weekly logbook. Open the <a href="logbook.php">Weekly Logbook</a>, have your supervisor
+                request a sign-off code for each submitted week, and complete their remarks. Once every
+                submitted week is signed, this page will unlock automatically.
+            </p>
+            <p style="margin-top:10px;">
+                <a href="logbook.php" class="btn btn-primary"><i class="fas fa-book"></i>&nbsp; Go to Weekly Logbook</a>
             </p>
         </div>
 

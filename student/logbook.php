@@ -7,10 +7,22 @@ $student_id = (int)$_SESSION['user_id'];
 $cur_year   = current_academic_year($pdo);
 $flash      = ['type' => '', 'msg' => ''];
 
+// Grace days after a week's last working day during which the student
+// can still write up / submit that week (covers the weekend). After
+// this window the week locks permanently (Option A — strict gating).
+const LOGBOOK_GRACE_DAYS = 2;
+
+$today = new DateTime('today');
+
+/** Helper: render a stored Y-m-d date as dd-mm-yyyy for display. */
+function fmt_date(?string $ymd): string {
+    if (!$ymd) return '—';
+    $t = strtotime($ymd);
+    return $t ? date('d-m-Y', $t) : '—';
+}
+
 // ----------------------------------------------------------------------
-// Pull header info auto-filled at the top of the form
-// (matches the "Name of Student / Programme / Index No / Name of
-// Organisation / Department/Office" rows on the official PDF).
+// Pull header info auto-filled at the top of the form.
 // ----------------------------------------------------------------------
 $userStmt = $pdo->prepare("SELECT full_name, index_number, program FROM users WHERE id = ?");
 $userStmt->execute([$student_id]);
@@ -25,17 +37,47 @@ $plStmt = $pdo->prepare("
 $plStmt->execute([$student_id]);
 $placement = $plStmt->fetch(PDO::FETCH_ASSOC) ?: null;
 
+// Once the final evaluation is submitted the placement is marked
+// 'completed' (so the WHERE status='active' above misses it). Re-fetch
+// the most recent placement regardless of status so we can show the
+// "logbook closed" state instead of "no placement".
+if (!$placement) {
+    $anyStmt = $pdo->prepare("
+        SELECT * FROM placements WHERE student_id = ?
+        " . ($cur_year ? " AND academic_year_id = " . (int)$cur_year['id'] : "") . "
+        ORDER BY created_at DESC LIMIT 1
+    ");
+    $anyStmt->execute([$student_id]);
+    $placement = $anyStmt->fetch(PDO::FETCH_ASSOC) ?: null;
+}
+
+// Has the final evaluation been submitted? If so, the logbook is closed
+// for good — no new entries, no edits (supervisor recommendation #5).
+$eval_exists = false;
+if ($placement) {
+    $evChk = $pdo->prepare("SELECT 1 FROM evaluations WHERE placement_id = ? LIMIT 1");
+    $evChk->execute([(int)$placement['id']]);
+    $eval_exists = (bool)$evChk->fetchColumn();
+}
+
 // ----------------------------------------------------------------------
-// Derive the week / day schedule from the placement dates so the
-// logbook form doesn't ask the student to retype anything (item #3).
+// Derive the week / day schedule from the placement dates and tag each
+// week with a time-gate state relative to today.
 //
-//   weeks_info = [
-//     ['n'=>1, 'start'=>'YYYY-MM-DD', 'end'=>'YYYY-MM-DD',
-//      'days'=>[['label'=>'Monday','date'=>'YYYY-MM-DD'], ...]],
-//     ...
-//   ]
+//   _state ∈ { 'not_started', 'open', 'closed' }
+//     not_started : today < week start
+//     open        : week start ≤ today ≤ week end + grace
+//     closed      : today > week end + grace
+//
+// Because each placement week is Mon-Fri (5 days) and the next week
+// starts 7 days after the previous, the 2-day grace exactly fills the
+// weekend gap — so at most ONE week is 'open' at any moment.
 // ----------------------------------------------------------------------
-$weeks_info = [];
+$weeks_info  = [];
+$active_week = null;       // the single currently-open week (or null)
+$logging_ended = false;
+$not_started   = false;
+
 if ($placement) {
     try {
         $p_start = new DateTime($placement['start_date']);
@@ -44,7 +86,6 @@ if ($placement) {
         $weeks_total = (int)ceil($span / 7);
         for ($w = 1; $w <= $weeks_total; $w++) {
             $ws = (clone $p_start)->modify('+' . (($w - 1) * 7) . ' days');
-            // Five work days from week-start, clipped to placement end.
             $we = (clone $ws)->modify('+4 days');
             if ($we > $p_end) $we = clone $p_end;
             $days = [];
@@ -53,20 +94,45 @@ if ($placement) {
                 if ($dd > $p_end) break;
                 $days[] = ['label' => $dd->format('l'), 'date' => $dd->format('Y-m-d')];
             }
-            $weeks_info[] = [
+            // State
+            $we_grace = (clone $we)->modify('+' . LOGBOOK_GRACE_DAYS . ' days');
+            if ($today < $ws)        $state = 'not_started';
+            elseif ($today > $we_grace) $state = 'closed';
+            else                     $state = 'open';
+
+            $info = [
                 'n'     => $w,
                 'start' => $ws->format('Y-m-d'),
                 'end'   => $we->format('Y-m-d'),
                 'days'  => $days,
+                '_state'=> $state,
             ];
+            $weeks_info[] = $info;
+            if ($state === 'open') $active_week = $info;
+        }
+        // Boundary states for the banners.
+        if (!empty($weeks_info)) {
+            $first_start = new DateTime($weeks_info[0]['start']);
+            $last_end    = (new DateTime(end($weeks_info)['end']))->modify('+' . LOGBOOK_GRACE_DAYS . ' days');
+            if ($today < $first_start) $not_started   = true;
+            if ($today > $last_end)    $logging_ended = true;
         }
     } catch (Exception $e) {
-        $weeks_info = []; // placement has malformed dates — fall back gracefully
+        $weeks_info = [];
     }
 }
 
+/** Find a week_info row by its number. */
+function week_by_n(array $weeks, int $n): ?array {
+    foreach ($weeks as $w) if ((int)$w['n'] === $n) return $w;
+    return null;
+}
+
 // ----------------------------------------------------------------------
-// Find the editing target if ?id= present, otherwise we're creating new.
+// Editing target. If ?id= present, load it. Otherwise auto-target the
+// currently-open week (loading its existing draft if one exists, so
+// Save Draft updates that row rather than creating a duplicate —
+// per-week independence, supervisor recommendation #2 / Option B).
 // ----------------------------------------------------------------------
 $editing = null;
 $editing_days = [];
@@ -74,17 +140,30 @@ if (!empty($_GET['id'])) {
     $stmt = $pdo->prepare("SELECT * FROM logbooks WHERE id = ? AND student_id = ?");
     $stmt->execute([(int)$_GET['id'], $student_id]);
     $editing = $stmt->fetch(PDO::FETCH_ASSOC) ?: null;
-    if ($editing) {
-        $dStmt = $pdo->prepare("SELECT * FROM logbook_days WHERE logbook_id = ? ORDER BY sort_order, day_date");
-        $dStmt->execute([$editing['id']]);
-        $editing_days = $dStmt->fetchAll(PDO::FETCH_ASSOC);
-    }
+} elseif ($active_week && $placement && !$eval_exists) {
+    $stmt = $pdo->prepare("SELECT * FROM logbooks WHERE student_id = ? AND placement_id = ? AND week_number = ? LIMIT 1");
+    $stmt->execute([$student_id, (int)$placement['id'], (int)$active_week['n']]);
+    $editing = $stmt->fetch(PDO::FETCH_ASSOC) ?: null;
 }
-$readonly = $editing && (int)$editing['is_submitted'] === 1;
+if ($editing) {
+    $dStmt = $pdo->prepare("SELECT * FROM logbook_days WHERE logbook_id = ? ORDER BY sort_order, day_date");
+    $dStmt->execute([$editing['id']]);
+    $editing_days = $dStmt->fetchAll(PDO::FETCH_ASSOC);
+}
+
+// Which week does the form represent?
+$form_week_n = $editing ? (int)$editing['week_number'] : ($active_week['n'] ?? 0);
+$form_week   = week_by_n($weeks_info, $form_week_n);
+
+// Is the form editable? Only the open week, only when not submitted and
+// no evaluation exists.
+$is_submitted = $editing && (int)$editing['is_submitted'] === 1;
+$editable = $placement && !$eval_exists && !$is_submitted
+            && $form_week && $form_week['_state'] === 'open';
+$readonly = !$editable;
 
 // ----------------------------------------------------------------------
-// POST: supervisor OTP — request a fresh code (emails it to the
-// supervisor address on the placement record) for THIS logbook week.
+// POST: supervisor OTP — request a fresh code for THIS logbook week.
 // ----------------------------------------------------------------------
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['sup_otp_request']) && $editing && $placement) {
     $purpose = 'logbook:' . (int)$editing['id'];
@@ -120,7 +199,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['sup_submit_remarks'])
         $err = 'Supervisor name is required.';
     } elseif ($code === '' || !preg_match('/^\d{6}$/', $code)) {
         $err = 'Enter the 6-digit OTP that was sent to your email.';
-    } elseif ((int)$editing['supervisor_signed_at'] !== 0 && !empty($editing['supervisor_signed_at'])) {
+    } elseif (!empty($editing['supervisor_signed_at'])) {
         $err = 'This week has already been signed off.';
     } else {
         $purpose = 'logbook:' . (int)$editing['id'];
@@ -150,8 +229,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['sup_submit_remarks'])
     }
 }
 
-$flash = $flash ?? ['type' => '', 'msg' => ''];
-if (empty($flash['msg'])) $flash = ['type' => '', 'msg' => ''];
 if (($_GET['otp_sent'] ?? '') === '1') {
     $flash = ['type' => 'success', 'msg' => 'A 6-digit code was emailed to your supervisor. Ask them for it, then type it in below.'];
 }
@@ -168,27 +245,30 @@ if (($_GET['otp_err'] ?? '') === 'migration') {
 if ($_SERVER['REQUEST_METHOD'] === 'POST'
     && (isset($_POST['save_draft']) || isset($_POST['submit_log']))) {
 
-    if (!$placement || empty($weeks_info)) {
+    if ($eval_exists) {
+        $flash = ['type' => 'error', 'msg' => 'Your final evaluation has been submitted — the logbook is now closed and cannot be edited.'];
+    } elseif (!$placement || empty($weeks_info)) {
         $flash = ['type' => 'error', 'msg' => 'You need an active placement (with valid start and end dates) before logging weekly entries.'];
     } else {
         $week        = (int)($_POST['week_number']    ?? 0);
         $student_rem = trim($_POST['student_remarks'] ?? '');
-        $log_id      = (int)($_POST['log_id']         ?? 0);   // 0 = new
+        $log_id      = (int)($_POST['log_id']         ?? 0);
         $finalise    = isset($_POST['submit_log']);
 
-        // Resolve the week — dates are derived from the placement, NOT
-        // the form. This prevents drift between week_number and the dates.
-        $week_def = null;
-        foreach ($weeks_info as $w) {
-            if ($w['n'] === $week) { $week_def = $w; break; }
-        }
+        // The week is server-resolved and MUST be the currently-open one.
+        // The form has no week picker — this guards against tampering.
+        $week_def = week_by_n($weeks_info, $week);
 
         $err = null;
-        if ($week < 1 || !$week_def) {
-            $err = 'Pick a valid week number from the dropdown.';
+        if (!$week_def) {
+            $err = 'Invalid week.';
+        } elseif ($week_def['_state'] === 'not_started') {
+            $err = 'That week has not started yet — you can only log the current week.';
+        } elseif ($week_def['_state'] === 'closed') {
+            $err = 'That week is closed for editing. You can only fill the current week within its allowed window.';
         }
 
-        // Duplicate-week guard (skip if we're editing the same row).
+        // Duplicate-week guard (skip if editing the same row).
         if (!$err) {
             $dupStmt = $pdo->prepare("SELECT id FROM logbooks WHERE student_id = ? AND placement_id = ? AND week_number = ? AND id <> ? LIMIT 1");
             $dupStmt->execute([$student_id, (int)$placement['id'], $week, $log_id]);
@@ -197,18 +277,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST'
             }
         }
 
-        // Build the day rows from the placement-derived schedule. Each
-        // row pairs the derived date with the student-typed activity
-        // for that day's textarea ($_POST['day_activities'][i]).
+        // Build day rows. Reject activities for days whose date is in the
+        // future — only days up to today are editable (Option A).
         $days = [];
         if (!$err) {
             $has_any = false;
             foreach ($week_def['days'] as $i => $d) {
-                $activity = trim($_POST['day_activities'][$i] ?? '');
+                $day_dt    = new DateTime($d['date']);
+                $is_future = $day_dt > $today;
+                $activity  = $is_future ? '' : trim($_POST['day_activities'][$i] ?? '');
                 if ($activity !== '') $has_any = true;
                 $days[] = [
                     'label'      => $d['label'],
-                    'date'       => $d['date'],   // server-derived, NEVER from form
+                    'date'       => $d['date'],
                     'activities' => $activity,
                     'sort'       => $i + 1,
                 ];
@@ -238,7 +319,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST'
                         $cur_year ? (int)$cur_year['id'] : null,
                         $log_id, $student_id,
                     ]);
-                    // Replace days
                     $pdo->prepare("DELETE FROM logbook_days WHERE logbook_id = ?")->execute([$log_id]);
                 } else {
                     $pdo->prepare("
@@ -302,28 +382,23 @@ $listStmt = $pdo->prepare("
 $listStmt->execute([$student_id]);
 $all_logs = $listStmt->fetchAll(PDO::FETCH_ASSOC);
 
-// Suggest the next week number for a fresh entry.
-$next_week = 1;
-foreach ($all_logs as $l) {
-    if ((int)$l['week_number'] >= $next_week) $next_week = (int)$l['week_number'] + 1;
-}
-
-// Pre-fill values
+// Pre-fill values for the form.
 if ($editing) {
     $f_week  = $editing['week_number'];
     $f_start = $editing['start_date'];
     $f_end   = $editing['end_date'];
     $f_rem   = $editing['student_remarks'] ?? '';
-    // Build a Mon-Fri map from the days that exist
-    $by_label = [];
-    foreach ($editing_days as $d) $by_label[$d['day_label']] = $d;
-} else {
-    $f_week  = $next_week;
-    $f_start = '';
-    $f_end   = '';
+} elseif ($active_week) {
+    $f_week  = $active_week['n'];
+    $f_start = $active_week['start'];
+    $f_end   = $active_week['end'];
     $f_rem   = '';
-    $by_label = [];
+} else {
+    $f_week = 0; $f_start = ''; $f_end = ''; $f_rem = '';
 }
+
+$by_sort = [];
+foreach ($editing_days as $d) $by_sort[(int)$d['sort_order']] = $d;
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -336,6 +411,11 @@ if ($editing) {
     <link rel="stylesheet" href="<?php echo asset('css/registry.css'); ?>">
     <link rel="stylesheet" href="<?php echo asset('css/student.css'); ?>">
     <link rel="stylesheet" href="<?php echo asset('css/logbook.css'); ?>">
+    <style>
+        .day-locked { opacity: 0.55; }
+        .day-locked textarea { background: #f3f4f6; cursor: not-allowed; }
+        .day-future-note { color: #92400e; font-size: 0.72rem; }
+    </style>
 </head>
 <body>
 <?php include __DIR__ . '/../includes/sidebar.php'; ?>
@@ -344,7 +424,7 @@ if ($editing) {
     <div class="header-panel">
         <div>
             <h1>Weekly Logbook</h1>
-            <p>One entry per week, mirroring the official RMU log sheet. Save as draft as you go, submit when the week is complete.</p>
+            <p>One entry per week, mirroring the official RMU log sheet. The current week opens automatically — fill each day as you go.</p>
         </div>
         <?php if ($placement): ?>
             <div class="date-chip">
@@ -367,6 +447,7 @@ if ($editing) {
     <?php endif; ?>
 
     <!-- Auto-filled header info -->
+    <?php if ($placement): ?>
     <div class="card log-header">
         <div class="grid-2">
             <div><span class="muted small">Name of Student</span><br><strong><?php echo htmlspecialchars($me['full_name'] ?? ''); ?></strong></div>
@@ -374,66 +455,58 @@ if ($editing) {
             <div><span class="muted small">Index No.</span><br><strong><?php echo htmlspecialchars($me['index_number'] ?? '—'); ?></strong></div>
             <div><span class="muted small">Name of Organisation</span><br><strong><?php echo htmlspecialchars($placement['company_name'] ?? '—'); ?></strong></div>
             <div><span class="muted small">Department / Office</span><br><strong><?php echo htmlspecialchars($placement['company_department'] ?? '—'); ?></strong></div>
+            <div><span class="muted small">Internship Period</span><br><strong><?php echo fmt_date($placement['start_date']); ?> &ndash; <?php echo fmt_date($placement['end_date']); ?></strong></div>
         </div>
     </div>
+    <?php endif; ?>
 
-    <!-- New / edit / view -->
-    <?php if ($placement): ?>
+    <?php
+    // ------- State banners that explain why the form is / isn't shown -------
+    if ($placement && $eval_exists): ?>
+        <div class="banner banner-success" style="margin-top: 14px;">
+            <i class="fas fa-lock"></i>
+            Your final evaluation has been submitted. The logbook is now <strong>closed</strong> and read-only — you cannot add or edit weekly entries.
+        </div>
+    <?php elseif ($placement && $not_started): ?>
+        <div class="banner banner-warning" style="margin-top: 14px;">
+            <i class="fas fa-hourglass-start"></i>
+            Your internship hasn't started yet. The logbook opens on <strong><?php echo fmt_date($placement['start_date']); ?></strong>.
+        </div>
+    <?php elseif ($placement && $logging_ended): ?>
+        <div class="banner banner-warning" style="margin-top: 14px;">
+            <i class="fas fa-flag-checkered"></i>
+            Your internship logging period ended on <strong><?php echo fmt_date($placement['end_date']); ?></strong>.
+            All weeks are now locked. If your supervisor evaluation isn't done yet,
+            <a href="evaluation.php">complete the final evaluation</a>.
+        </div>
+    <?php endif; ?>
+
+    <!-- New / edit / view form (only when there's an open week to act on) -->
+    <?php if ($placement && !$eval_exists && ($active_week || ($editing && $form_week))): ?>
         <div class="card" style="margin-top: 18px;">
             <h3>
-                <?php if ($readonly): ?>
+                <?php if ($is_submitted): ?>
                     <i class="fas fa-lock"></i>&nbsp; Week <?php echo (int)$f_week; ?> &mdash; submitted
-                <?php elseif ($editing): ?>
-                    <i class="fas fa-edit"></i>&nbsp; Edit Week <?php echo (int)$f_week; ?> draft
+                <?php elseif ($readonly): ?>
+                    <i class="fas fa-eye"></i>&nbsp; Week <?php echo (int)$f_week; ?> &mdash; <?php echo $form_week && $form_week['_state'] === 'closed' ? 'closed (read-only)' : 'view'; ?>
                 <?php else: ?>
-                    <i class="fas fa-plus-circle"></i>&nbsp; New Weekly Entry
+                    <i class="fas fa-pen"></i>&nbsp; Week <?php echo (int)$f_week; ?> &mdash; current week
                 <?php endif; ?>
             </h3>
+            <p class="muted small" style="margin-top:-6px;">
+                <?php echo fmt_date($f_start); ?> &ndash; <?php echo fmt_date($f_end); ?>
+            </p>
 
             <form method="POST" autocomplete="off" id="logForm">
+                <input type="hidden" name="week_number" value="<?php echo (int)$f_week; ?>">
                 <?php if ($editing): ?>
                     <input type="hidden" name="log_id" value="<?php echo (int)$editing['id']; ?>">
                 <?php endif; ?>
 
-                <?php
-                    // Build sort-indexed map of existing days for edit mode
-                    // (the auto-fill JS fills new rows otherwise).
-                    $by_sort = [];
-                    foreach ($editing_days as $d) $by_sort[(int)$d['sort_order']] = $d;
-                ?>
-                <div class="grid-3">
-                    <div class="field">
-                        <label>Week Number</label>
-                        <select name="week_number" id="week_select" required
-                                <?php echo $readonly ? 'disabled' : ''; ?>>
-                            <?php foreach ($weeks_info as $w): ?>
-                                <option value="<?php echo (int)$w['n']; ?>"
-                                        data-start="<?php echo htmlspecialchars($w['start']); ?>"
-                                        data-end="<?php echo htmlspecialchars($w['end']); ?>"
-                                        <?php echo ((int)$f_week === (int)$w['n']) ? 'selected' : ''; ?>>
-                                    Week <?php echo (int)$w['n']; ?>
-                                    (<?php echo htmlspecialchars(date('d M', strtotime($w['start']))); ?>
-                                     – <?php echo htmlspecialchars(date('d M Y', strtotime($w['end']))); ?>)
-                                </option>
-                            <?php endforeach; ?>
-                        </select>
-                        <?php if ($readonly): ?>
-                            <input type="hidden" name="week_number" value="<?php echo (int)$f_week; ?>">
-                        <?php endif; ?>
-                    </div>
-                    <div class="field">
-                        <label>Week Beginning</label>
-                        <div class="readonly-chip" id="week_start_disp"><?php echo htmlspecialchars($f_start ?: '—'); ?></div>
-                    </div>
-                    <div class="field">
-                        <label>Week Ending</label>
-                        <div class="readonly-chip" id="week_end_disp"><?php echo htmlspecialchars($f_end ?: '—'); ?></div>
-                    </div>
-                </div>
-
                 <h4 class="section-h">Daily Activities</h4>
                 <p class="muted small" style="margin: -4px 0 8px;">
-                    The day labels and dates are taken from your placement period. Just type what you did.
+                    Each day unlocks on its own date — you can't fill a day before it arrives.
+                    Days from earlier this week stay editable until the week closes.
                 </p>
                 <table class="day-table">
                     <thead>
@@ -445,31 +518,27 @@ if ($editing) {
                     </thead>
                     <tbody>
                         <?php
-                            // Pick the schedule for the currently-selected week (if any).
-                            $cur_week_def = null;
-                            foreach ($weeks_info as $w) {
-                                if ((int)$w['n'] === (int)$f_week) { $cur_week_def = $w; break; }
-                            }
-                            $schedule = $cur_week_def['days'] ?? [];
+                            $schedule = $form_week['days'] ?? [];
+                            for ($i = 0; $i < 5; $i++):
+                                $existing = $by_sort[$i + 1] ?? null;
+                                $label    = $existing['day_label'] ?? ($schedule[$i]['label'] ?? '');
+                                $date     = $existing['day_date']  ?? ($schedule[$i]['date']  ?? '');
+                                $activity = $existing['activities'] ?? '';
+                                if ($label === '' && $date === '') continue;
+                                $day_is_future = $date !== '' && (new DateTime($date)) > $today;
+                                $day_disabled  = $readonly || $day_is_future;
                         ?>
-                        <?php for ($i = 0; $i < 5; $i++):
-                            // Prefer stored data (edit mode), else placement-derived (new mode).
-                            $existing = $by_sort[$i + 1] ?? null;
-                            $label    = $existing['day_label'] ?? ($schedule[$i]['label'] ?? '');
-                            $date     = $existing['day_date']  ?? ($schedule[$i]['date']  ?? '');
-                            $activity = $existing['activities'] ?? '';
-                            $hidden   = ($label === '' && $date === '') ? 'style="display:none;"' : '';
-                        ?>
-                            <tr id="day_row_<?php echo $i; ?>" <?php echo $hidden; ?>>
-                                <th id="day_label_<?php echo $i; ?>"><?php echo htmlspecialchars($label); ?></th>
+                            <tr class="<?php echo $day_is_future ? 'day-locked' : ''; ?>">
+                                <th><?php echo htmlspecialchars($label); ?></th>
                                 <td>
-                                    <span class="day-date readonly-chip" id="day_date_<?php echo $i; ?>">
-                                        <?php echo htmlspecialchars($date ?: '—'); ?>
-                                    </span>
+                                    <span class="day-date readonly-chip"><?php echo fmt_date($date); ?></span>
                                 </td>
                                 <td>
                                     <textarea name="day_activities[<?php echo $i; ?>]" rows="2"
-                                              <?php echo $readonly ? 'disabled' : ''; ?>><?php echo htmlspecialchars($activity); ?></textarea>
+                                              <?php echo $day_disabled ? 'disabled' : ''; ?>><?php echo htmlspecialchars($activity); ?></textarea>
+                                    <?php if ($day_is_future && !$readonly): ?>
+                                        <span class="day-future-note"><i class="fas fa-lock"></i> opens <?php echo fmt_date($date); ?></span>
+                                    <?php endif; ?>
                                 </td>
                             </tr>
                         <?php endfor; ?>
@@ -485,7 +554,6 @@ if ($editing) {
                 <?php if ($editing && (int)$editing['is_submitted'] === 1): ?>
                     <h4 class="section-h">Supervisor's Remarks</h4>
                     <?php if (!empty($editing['supervisor_signed_at'])): ?>
-                        <!-- Locked: read-only signed entry -->
                         <div class="sup-block">
                             <?php if (!empty($editing['supervisor_remarks'])): ?>
                                 <p><?php echo nl2br(htmlspecialchars($editing['supervisor_remarks'])); ?></p>
@@ -496,11 +564,10 @@ if ($editing) {
                                 <?php if (!empty($editing['supervisor_signed_by_status'])): ?>
                                     (<?php echo htmlspecialchars($editing['supervisor_signed_by_status']); ?>)
                                 <?php endif; ?>
-                                on <?php echo htmlspecialchars(date('d M Y', strtotime($editing['supervisor_signed_at']))); ?>
+                                on <?php echo fmt_date($editing['supervisor_signed_at']); ?>
                             </p>
                         </div>
                     <?php else: ?>
-                        <!-- OTP sign-off panel: supervisor sits at the student's machine -->
                         <div class="sup-otp-panel">
                             <p class="muted small">
                                 <i class="fas fa-shield-alt"></i>&nbsp;
@@ -556,9 +623,9 @@ if ($editing) {
                     <?php endif; ?>
                 <?php endif; ?>
 
-                <?php if (!$readonly): ?>
+                <?php if ($editable): ?>
                     <div class="form-actions">
-                        <a href="logbook.php" class="btn btn-ghost">Cancel</a>
+                        <a href="logbook.php" class="btn btn-ghost">Reset</a>
                         <button type="submit" name="save_draft" class="btn btn-ghost">
                             <i class="fas fa-save"></i>&nbsp; Save Draft
                         </button>
@@ -590,21 +657,21 @@ if ($editing) {
                     </tr>
                 </thead>
                 <tbody>
-                    <?php foreach ($all_logs as $l): ?>
+                    <?php foreach ($all_logs as $l):
+                        $wn = (int)$l['week_number'];
+                        $wstate = ($w = week_by_n($weeks_info, $wn)) ? $w['_state'] : null;
+                    ?>
                         <tr>
-                            <td><strong>Week <?php echo (int)$l['week_number']; ?></strong></td>
+                            <td><strong>Week <?php echo $wn; ?></strong></td>
                             <td>
-                                <?php if ($l['start_date']): ?>
-                                    <?php echo htmlspecialchars(date('d M', strtotime($l['start_date']))); ?>
-                                    – <?php echo htmlspecialchars(date('d M Y', strtotime($l['end_date']))); ?>
-                                <?php else: ?>
-                                    —
-                                <?php endif; ?>
+                                <?php echo $l['start_date'] ? fmt_date($l['start_date']) . ' – ' . fmt_date($l['end_date']) : '—'; ?>
                             </td>
                             <td><?php echo (int)$l['day_count']; ?> day<?php echo $l['day_count'] == 1 ? '' : 's'; ?></td>
                             <td>
                                 <?php if ((int)$l['is_submitted'] === 1): ?>
                                     <span class="role-badge role-secretary">Submitted</span>
+                                <?php elseif ($wstate === 'closed'): ?>
+                                    <span class="role-badge role-archived">Closed (draft)</span>
                                 <?php else: ?>
                                     <span class="role-badge role-archived">Draft</span>
                                 <?php endif; ?>
@@ -617,8 +684,13 @@ if ($editing) {
                                 <?php endif; ?>
                             </td>
                             <td class="actions-col">
+                                <?php
+                                    // Edit icon only when the entry is still actionable
+                                    // (open week, not submitted, no eval). Otherwise view.
+                                    $row_editable = !$eval_exists && (int)$l['is_submitted'] === 0 && $wstate === 'open';
+                                ?>
                                 <a class="btn btn-ghost btn-sm" href="logbook.php?id=<?php echo (int)$l['id']; ?>">
-                                    <i class="fas <?php echo (int)$l['is_submitted'] === 1 ? 'fa-eye' : 'fa-edit'; ?>"></i>
+                                    <i class="fas <?php echo $row_editable ? 'fa-edit' : 'fa-eye'; ?>"></i>
                                 </a>
                             </td>
                         </tr>
@@ -630,47 +702,14 @@ if ($editing) {
 </div>
 
 <script>
-// When the student picks a week from the dropdown, the day labels +
-// dates (and the week begin/end display) auto-fill from the schedule
-// derived from their placement period (item #3).
-const WEEKS = <?php echo json_encode($weeks_info); ?>;
-const weekSel = document.getElementById('week_select');
-
-function applyWeek(n) {
-    const w = WEEKS.find(x => x.n === Number(n));
-    if (!w) return;
-    document.getElementById('week_start_disp').textContent = w.start;
-    document.getElementById('week_end_disp').textContent   = w.end;
-    for (let i = 0; i < 5; i++) {
-        const row = document.getElementById('day_row_' + i);
-        const lbl = document.getElementById('day_label_' + i);
-        const dt  = document.getElementById('day_date_'  + i);
-        if (!row || !lbl || !dt) continue;
-        if (i < w.days.length) {
-            row.style.display = '';
-            lbl.textContent = w.days[i].label;
-            dt.textContent  = w.days[i].date;
-        } else {
-            row.style.display = 'none';
-        }
-    }
-}
-
-if (weekSel) {
-    weekSel.addEventListener('change', () => applyWeek(weekSel.value));
-}
-
-// OTP-gated fields: the rest of the supervisor sign-off form stays
-// disabled until the OTP entered actually matches a live (unconsumed,
-// unexpired) code on the server. Length-only checks are insufficient
-// — any 6 digits would unlock. We hit api/check_supervisor_otp.php
-// (peek-only, doesn't consume) and only flip the fieldset when the
-// server says ok.
+// OTP-gated supervisor sign-off: the rest of the form stays disabled
+// until the entered OTP matches a live (unconsumed, unexpired) code on
+// the server. Peek via api/check_supervisor_otp.php (doesn't consume).
 const BASE_URL_LB = <?php echo json_encode(BASE_URL); ?>;
 document.querySelectorAll('.otp-gated-form').forEach(form => {
-    const otp        = form.querySelector('.otp-input');
-    const lock       = form.querySelector('.otp-locked');
-    const statusEl   = form.querySelector('.otp-status');
+    const otp         = form.querySelector('.otp-input');
+    const lock        = form.querySelector('.otp-locked');
+    const statusEl    = form.querySelector('.otp-status');
     const placementId = form.dataset.placementId;
     const purpose     = form.dataset.purpose;
     if (!otp || !lock || !placementId || !purpose) return;

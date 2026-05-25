@@ -11,6 +11,10 @@ $myDept = $deptStmt->fetchColumn();
 $year_filter   = isset($_GET['year']) ? (int)$_GET['year']   : 0;
 $status_filter = trim($_GET['status'] ?? '');
 $q             = trim($_GET['q']      ?? '');
+$from_date     = trim($_GET['from']   ?? '');
+$to_date       = trim($_GET['to']     ?? '');
+$from_ok = preg_match('/^\d{4}-\d{2}-\d{2}$/', $from_date) ? $from_date : '';
+$to_ok   = preg_match('/^\d{4}-\d{2}-\d{2}$/', $to_date)   ? $to_date   : '';
 
 $years = $pdo->query("SELECT id, name, is_current FROM academic_years ORDER BY start_date DESC")->fetchAll(PDO::FETCH_ASSOC);
 if ($year_filter === 0) {
@@ -76,6 +80,18 @@ if ($status_filter !== '') {
     $rows = array_values(array_filter($rows, fn($r) => $r['_stage'] === $status_filter));
 }
 
+// Date-range filter: keep students whose placement period overlaps
+// [from, to]. With a date filter active, students without a placement
+// are excluded (the range describes active internships).
+if ($from_ok !== '' || $to_ok !== '') {
+    $rows = array_values(array_filter($rows, function ($r) use ($from_ok, $to_ok) {
+        if (empty($r['placement_start']) || empty($r['placement_end'])) return false;
+        if ($from_ok !== '' && $r['placement_end']   < $from_ok) return false;
+        if ($to_ok   !== '' && $r['placement_start'] > $to_ok)   return false;
+        return true;
+    }));
+}
+
 // KPIs
 $kpi = ['total'=>0,'requested'=>0,'approved'=>0,'placed'=>0,'logging'=>0,'completed'=>0,'rejected'=>0,'none'=>0,'avg_score'=>null];
 $score_count = 0; $score_sum = 0;
@@ -95,6 +111,63 @@ $PIPELINE_LABELS = [
     'completed' => 'Completed',
     'rejected'  => 'Rejected',
 ];
+
+// ---------------------------------------------------------------------
+// Chart data (department-scoped). Chart 1 groups by programme rather
+// than department, since this whole report is already one department.
+// ---------------------------------------------------------------------
+$STAGES_ORDER = ['none','requested','approved','placed','logging','completed','rejected'];
+$STAGE_COLORS = [
+    'none'=>'#94a3b8','requested'=>'#f59e0b','approved'=>'#3b82f6','placed'=>'#6366f1',
+    'logging'=>'#0ea5e9','completed'=>'#10b981','rejected'=>'#ef4444',
+];
+$prog_stage_counts = [];
+foreach ($rows as $r) {
+    $pr = $r['program'] ?: '(unspecified)';
+    $prog_stage_counts[$pr] = $prog_stage_counts[$pr] ?? array_fill_keys($STAGES_ORDER, 0);
+    $prog_stage_counts[$pr][$r['_stage']]++;
+}
+ksort($prog_stage_counts);
+$chart1_labels   = array_keys($prog_stage_counts);
+$chart1_datasets = [];
+foreach ($STAGES_ORDER as $stage) {
+    $chart1_datasets[] = [
+        'label' => $PIPELINE_LABELS[$stage],
+        'data'  => array_map(fn($p) => $prog_stage_counts[$p][$stage], $chart1_labels),
+        'backgroundColor' => $STAGE_COLORS[$stage],
+    ];
+}
+
+$bins       = array_fill(0, 10, 0);
+$bin_labels = ['0-4','5-9','10-14','15-19','20-24','25-29','30-34','35-39','40-44','45-50'];
+foreach ($rows as $r) {
+    if (!empty($r['total_score'])) {
+        $bins[min(9, (int)floor($r['total_score'] / 5))]++;
+    }
+}
+
+// Weekly submitted-logbooks trend for this department (last 12 weeks).
+$trend_stmt = $pdo->prepare("
+    SELECT DATE_FORMAT(l.start_date, '%x-W%v') AS iso_week, COUNT(*) AS n
+    FROM logbooks l
+    JOIN users u ON u.id = l.student_id
+    WHERE l.is_submitted = 1
+      AND u.department = ?
+      AND l.start_date >= DATE_SUB(CURDATE(), INTERVAL 12 WEEK)
+    GROUP BY iso_week
+    ORDER BY iso_week
+");
+$trend_stmt->execute([$myDept]);
+$trend_map = [];
+foreach ($trend_stmt->fetchAll(PDO::FETCH_ASSOC) as $tr) $trend_map[$tr['iso_week']] = (int)$tr['n'];
+
+$today_d = new DateTime('today');
+$trend_labels = []; $trend_values = [];
+for ($i = 11; $i >= 0; $i--) {
+    $d = (clone $today_d)->modify("-$i weeks");
+    $trend_labels[] = $d->format('\WW (M-d)');
+    $trend_values[] = $trend_map[$d->format('o-\WW')] ?? 0;
+}
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -108,6 +181,16 @@ $PIPELINE_LABELS = [
     <link rel="stylesheet" href="<?php echo asset('css/users.css'); ?>">
     <link rel="stylesheet" href="<?php echo asset('css/dashboards.css'); ?>">
     <link rel="stylesheet" href="<?php echo asset('css/reports.css'); ?>">
+    <style>
+        .chart-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; margin: 22px 0; }
+        .chart-card { background:#fff; border:1px solid #e5e7eb; border-radius:10px; padding:14px 18px 18px; box-shadow:0 1px 3px rgba(0,0,0,0.04); }
+        .chart-card.wide { grid-column: 1 / -1; }
+        .chart-card h3 { margin:0 0 10px; font-size:0.95rem; color:#374151; font-weight:600; }
+        .chart-card .chart-meta { font-size:0.78rem; color:#6b7280; margin-bottom:8px; }
+        .chart-canvas-wrap { position: relative; height: 280px; }
+        @media (max-width: 900px) { .chart-grid { grid-template-columns: 1fr; } }
+        @media print { .chart-grid { grid-template-columns: 1fr 1fr; } .chart-card { break-inside: avoid; } }
+    </style>
 </head>
 <body>
 <?php include __DIR__ . '/../includes/sidebar.php'; ?>
@@ -143,6 +226,14 @@ $PIPELINE_LABELS = [
             <?php endforeach; ?>
         </select>
         <input type="text" name="q" value="<?php echo htmlspecialchars($q); ?>" placeholder="Search by name or index #" class="filter-input">
+        <label class="filter-input" style="display:flex;align-items:center;gap:6px;">
+            <span class="muted small">From</span>
+            <input type="date" name="from" value="<?php echo htmlspecialchars($from_ok); ?>" style="border:none;outline:none;">
+        </label>
+        <label class="filter-input" style="display:flex;align-items:center;gap:6px;">
+            <span class="muted small">To</span>
+            <input type="date" name="to" value="<?php echo htmlspecialchars($to_ok); ?>" style="border:none;outline:none;">
+        </label>
         <button type="submit" class="btn btn-primary"><i class="fas fa-filter"></i>&nbsp; Apply</button>
         <a href="reports.php" class="btn btn-ghost">Clear</a>
     </form>
@@ -153,6 +244,24 @@ $PIPELINE_LABELS = [
         <div class="kpi-card"><div class="kpi-label">Placed</div><div class="kpi-value"><?php echo $kpi['placed'] + $kpi['logging']; ?></div></div>
         <div class="kpi-card ok"><div class="kpi-label">Completed</div><div class="kpi-value"><?php echo $kpi['completed']; ?></div></div>
         <div class="kpi-card"><div class="kpi-label">Avg score</div><div class="kpi-value"><?php echo $kpi['avg_score'] !== null ? $kpi['avg_score'] : '—'; ?></div></div>
+    </div>
+
+    <div class="chart-grid">
+        <div class="chart-card wide">
+            <h3><i class="fas fa-chart-bar"></i>&nbsp; Pipeline stages by programme</h3>
+            <p class="chart-meta">Filtered set: <?php echo (int)$kpi['total']; ?> students. Stacked by stage.</p>
+            <div class="chart-canvas-wrap"><canvas id="chartStages"></canvas></div>
+        </div>
+        <div class="chart-card">
+            <h3><i class="fas fa-chart-area"></i>&nbsp; Evaluation score distribution</h3>
+            <p class="chart-meta">Buckets of 5 points (max 50). Completed evaluations only.</p>
+            <div class="chart-canvas-wrap"><canvas id="chartScores"></canvas></div>
+        </div>
+        <div class="chart-card">
+            <h3><i class="fas fa-chart-line"></i>&nbsp; Weekly logbooks submitted (last 12 weeks)</h3>
+            <p class="chart-meta"><?php echo htmlspecialchars($myDept); ?> students, per ISO week.</p>
+            <div class="chart-canvas-wrap"><canvas id="chartTrend"></canvas></div>
+        </div>
     </div>
 
     <div class="card" style="padding: 0;">
@@ -202,5 +311,37 @@ $PIPELINE_LABELS = [
         </table>
     </div>
 </div>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<script>
+const CHART1_LABELS   = <?php echo json_encode($chart1_labels, JSON_UNESCAPED_UNICODE); ?>;
+const CHART1_DATASETS = <?php echo json_encode($chart1_datasets, JSON_UNESCAPED_UNICODE); ?>;
+const CHART2_LABELS   = <?php echo json_encode($bin_labels); ?>;
+const CHART2_BINS     = <?php echo json_encode($bins); ?>;
+const CHART3_LABELS   = <?php echo json_encode($trend_labels); ?>;
+const CHART3_VALUES   = <?php echo json_encode($trend_values); ?>;
+
+if (CHART1_LABELS.length > 0) {
+    new Chart(document.getElementById('chartStages'), {
+        type: 'bar',
+        data: { labels: CHART1_LABELS, datasets: CHART1_DATASETS },
+        options: {
+            responsive: true, maintainAspectRatio: false,
+            scales: { x: { stacked: true }, y: { stacked: true, beginAtZero: true, ticks: { precision: 0 } } },
+            plugins: { legend: { position: 'bottom' } },
+        },
+    });
+}
+new Chart(document.getElementById('chartScores'), {
+    type: 'bar',
+    data: { labels: CHART2_LABELS, datasets: [{ label: 'Students', data: CHART2_BINS, backgroundColor: '#10b981', borderRadius: 4 }] },
+    options: { responsive: true, maintainAspectRatio: false, scales: { y: { beginAtZero: true, ticks: { precision: 0 } } }, plugins: { legend: { display: false } } },
+});
+new Chart(document.getElementById('chartTrend'), {
+    type: 'line',
+    data: { labels: CHART3_LABELS, datasets: [{ label: 'Submitted logs', data: CHART3_VALUES, borderColor: '#3b82f6', backgroundColor: 'rgba(59,130,246,0.18)', fill: true, tension: 0.3, pointRadius: 3 }] },
+    options: { responsive: true, maintainAspectRatio: false, scales: { y: { beginAtZero: true, ticks: { precision: 0 } } }, plugins: { legend: { display: false } } },
+});
+</script>
 </body>
 </html>

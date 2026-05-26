@@ -14,10 +14,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['add_user'])) {
         $email = trim($_POST['email'] ?? '');
 
         $err = null;
-        $reg = null;
         if ($idx === '') {
             $err = 'Pick a student from the registry before creating an account.';
-        } else {
+        } elseif ($email === '') {
+            $err = 'Student email is required.';
+        } elseif (($emailErr = rmu_email_error($email, 'student')) !== null) {
+            $err = $emailErr;
+        }
+
+        $reg = null;
+        if (!$err) {
             $regStmt = $pdo->prepare("
                 SELECT r.*, d.name AS dept_name, p.name AS program_name
                 FROM student_registry r
@@ -28,19 +34,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['add_user'])) {
             $regStmt->execute([$idx]);
             $reg = $regStmt->fetch(PDO::FETCH_ASSOC);
 
-            if (!$reg)                             $err = "No registry entry for $idx.";
+            if (!$reg)                           $err = "No registry entry for $idx.";
             elseif ((int)$reg['is_claimed'] === 1) $err = "$idx already has a portal account.";
-        }
-
-        // Registry's email is authoritative when present. The form
-        // locks that field as readonly, but defend against direct POSTs.
-        if ($reg && !empty($reg['email'])) {
-            $email = $reg['email'];
-        }
-
-        if (!$err) {
-            if ($email === '')                                                 $err = 'Student email is required.';
-            elseif (($emailErr = rmu_email_error($email, 'student')) !== null) $err = $emailErr;
         }
 
         if (!$err) {
@@ -208,7 +203,6 @@ $STUDENT_DOMAIN = RMU_STUDENT_DOMAIN;
         .reg-pick-box dl { display: grid; grid-template-columns: max-content 1fr; gap: 4px 14px; margin: 0; }
         .reg-pick-box dt { color: #6b7280; font-size: 0.8rem; }
         .reg-pick-box dd { margin: 0; font-weight: 600; }
-        input.readonly { background: #f3f4f6; color: #4b5563; cursor: not-allowed; }
     </style>
 </head>
 <body>
@@ -276,8 +270,8 @@ $STUDENT_DOMAIN = RMU_STUDENT_DOMAIN;
                     <label>Email <span class="req">*</span></label>
                     <input type="email" name="email" id="student_email"
                            value="<?php echo htmlspecialchars($preserve['email'] ?? ''); ?>"
-                           placeholder="Pick a student to auto-fill, or enter manually">
-                    <small class="muted small" id="email_note">Must end in <code>@<?php echo $STUDENT_DOMAIN; ?></code>. Auto-filled from the registry if available.</small>
+                           placeholder="e.g. j.doe@<?php echo $STUDENT_DOMAIN; ?>">
+                    <small class="muted small">Must end in <code>@<?php echo $STUDENT_DOMAIN; ?></code>. Auto-filled from the registry if available.</small>
                 </div>
             </div>
 
@@ -411,27 +405,7 @@ function pickStudent(idx) {
     pickBox.style.display = '';
     regSearch.value = `${row.full_name} (${row.index_number})`;
     regResults.style.display = 'none';
-
-    const note = document.getElementById('email_note');
-    if (row.email) {
-        // Registry already knows this student's email — use it and lock
-        // the field so admin can't accidentally type a different one.
-        // If the address on file is wrong, fix it on the registry page.
-        emailInput.value    = row.email;
-        emailInput.readOnly = true;
-        emailInput.classList.add('readonly');
-        note.innerHTML =
-            'Auto-filled from the registry. To change the email, edit this student on the ' +
-            '<a href="registry.php">Student Registry</a> page first.';
-    } else {
-        // No email on file — admin must type one.
-        emailInput.readOnly = false;
-        emailInput.classList.remove('readonly');
-        emailInput.value = '';
-        note.innerHTML =
-            'No email on file in the registry — enter one ending in <code>@<?php echo $STUDENT_DOMAIN; ?></code>.';
-        emailInput.focus();
-    }
+    if (row.email && !emailInput.value) emailInput.value = row.email;
 }
 
 regSearch.addEventListener('input', () => {

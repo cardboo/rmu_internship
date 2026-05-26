@@ -333,16 +333,6 @@ foreach ($programs as $p) {
         </div>
     <?php endif; ?>
 
-    <?php
-        $flash_success = $_SESSION['flash_success'] ?? null;
-        unset($_SESSION['flash_success']);
-    ?>
-    <?php if ($flash_success): ?>
-        <div class="banner banner-success">
-            <i class="fas fa-check-circle"></i> <?php echo htmlspecialchars($flash_success); ?>
-        </div>
-    <?php endif; ?>
-
     <?php if (!empty($drift)): ?>
         <details class="row-errors" open>
             <summary>
@@ -569,12 +559,11 @@ foreach ($programs as $p) {
                         <th>Level</th>
                         <th>Status</th>
                         <th>Added</th>
-                        <th>Actions</th>
                     </tr>
                 </thead>
                 <tbody>
                     <?php if (empty($registry)): ?>
-                        <tr><td colspan="9" class="empty">No records found.</td></tr>
+                        <tr><td colspan="8" class="empty">No records found.</td></tr>
                     <?php else: foreach ($registry as $row): ?>
                         <tr>
                             <td><strong><?php echo htmlspecialchars($row['index_number']); ?></strong></td>
@@ -609,12 +598,6 @@ foreach ($programs as $p) {
                                 <?php endif; ?>
                             </td>
                             <td><?php echo htmlspecialchars(date('d M Y', strtotime($row['created_at']))); ?></td>
-                            <td>
-                                <a href="edit_registry.php?index=<?php echo urlencode($row['index_number']); ?>"
-                                   class="btn btn-ghost btn-sm" title="Edit registry record">
-                                    <i class="fas fa-edit"></i>
-                                </a>
-                            </td>
                         </tr>
                     <?php endforeach; endif; ?>
                 </tbody>

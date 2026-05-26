@@ -355,12 +355,20 @@ function showBranch() {
     studentBox.style.display = isStudent ? '' : 'none';
     staffBox.style.display   = isStaff   ? '' : 'none';
 
-    // Required flags only apply to the visible branch. Browser HTML5
-    // validation otherwise blocks submit on hidden empty fields.
+    // Disable the inactive branch's controls entirely. Disabled fields
+    // are NOT submitted, which avoids the two name="email" inputs (one
+    // per branch) colliding — previously the hidden, empty staff email
+    // overwrote the student's email on the server, triggering a spurious
+    // "email is required". Disabling also keeps HTML5 validation off
+    // hidden controls.
+    studentBox.querySelectorAll('input').forEach(el => el.disabled = !isStudent);
+    staffBox.querySelectorAll('input, select').forEach(el => el.disabled = !isStaff);
+
+    // Required flags only apply to the visible branch.
     document.getElementById('student_email').required = isStudent;
-    document.querySelector('#staff_branch input[name="full_name"]').required = isStaff;
-    document.querySelector('#staff_branch input[name="email"]').required     = isStaff;
-    document.querySelector('#staff_branch select[name="department"]').required = isStaff;
+    staffBox.querySelector('input[name="full_name"]').required  = isStaff;
+    staffBox.querySelector('input[name="email"]').required      = isStaff;
+    staffBox.querySelector('select[name="department"]').required = isStaff;
 }
 roleSel.addEventListener('change', showBranch);
 showBranch();
